@@ -19,7 +19,7 @@ type Props = {
   timeScale?: number;
   focusPhotoId: string | null;
   focusActive: boolean;
-  focusTarget?: { x: number; y: number } | null;
+  focusTarget?: { x: number; y: number; width?: number; height?: number } | null;
   onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
 };
 

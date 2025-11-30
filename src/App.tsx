@@ -73,7 +73,7 @@ export default function App() {
   const [commentDraft, setCommentDraft] = useState('');
   const [handPosition, setHandPosition] = useState<HandPosition>({ x: 0.5, y: 0.5, detected: false });
   const [gestureEnabled, setGestureEnabled] = useState(false);
-  const [detailCardPos, setDetailCardPos] = useState<{ x: number; y: number } | null>(null);
+  const [detailCardPos, setDetailCardPos] = useState<{ x: number; y: number; width?: number; height?: number } | null>(null);
   const [handoff, setHandoff] = useState<{ id: string; src: string; from: { x: number; y: number; width: number; height: number } } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);

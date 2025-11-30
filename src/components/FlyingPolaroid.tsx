@@ -19,8 +19,8 @@ export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone }) => {
   }));
 
   useEffect(() => {
-    const targetW = to.width ?? 320;
-    const targetH = to.height ?? 360;
+    const targetW = to.width ?? from.width;
+    const targetH = to.height ?? from.height;
     const targetLeft = to.x - targetW / 2;
     const targetTop = to.y - targetH / 2;
 
@@ -51,7 +51,7 @@ export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone }) => {
         width: style.width,
         height: style.height,
         transform: `scale(${style.scale}) rotate(${style.rotate})`,
-        transition: 'all 0.6s cubic-bezier(0.23, 1, 0.32, 1)',
+        transition: 'all 1.1s cubic-bezier(0.22, 1, 0.36, 1)',
         filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.35))'
       }}
     >

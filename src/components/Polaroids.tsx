@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { PhotoEntry, Theme } from '../types';
@@ -13,7 +13,7 @@ type Props = {
   timeScale?: number;
   focusPhotoId?: string | null;
   focusActive?: boolean;
-  focusTarget?: { x: number; y: number } | null;
+  focusTarget?: { x: number; y: number; width?: number; height?: number } | null;
   onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
 };
 
@@ -35,7 +35,7 @@ const PolaroidCard: React.FC<{
   timeScale: number;
   focusPhotoId?: string | null;
   focusActive?: boolean;
-  focusTarget?: { x: number; y: number } | null;
+  focusTarget?: { x: number; y: number; width?: number; height?: number } | null;
   onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
 }> = ({ data, mode, theme, onSelect, timeScale, focusPhotoId, focusActive, focusTarget, onScreenSelect }) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -44,6 +44,7 @@ const PolaroidCard: React.FC<{
   const focusPosition = useMemo(() => new THREE.Vector3(0, 9, 8), []);
   const focusDistanceRef = useRef<number>(8);
   const [photoScale, setPhotoScale] = useState<THREE.Vector2>(() => new THREE.Vector2(1, 1));
+  const { size, camera } = useThree();
 
   useEffect(() => {
     const loader = new THREE.TextureLoader();
@@ -92,7 +93,7 @@ const PolaroidCard: React.FC<{
 
     const target = targetPos;
     const scaledDelta = delta * timeScale;
-    const step = scaledDelta * data.speed * (isFocus ? 3 : isFormed ? 1.3 : 0.8);
+    const step = scaledDelta * data.speed * (isFocus ? 1.4 : isFormed ? 1.3 : 0.8);
     groupRef.current.position.lerp(target, step);
 
     // 始终面向摄像机，避免看到背面
@@ -100,7 +101,7 @@ const PolaroidCard: React.FC<{
     const orient = new THREE.Object3D();
     orient.position.copy(groupRef.current.position);
     orient.lookAt(cameraPos);
-    groupRef.current.quaternion.slerp(orient.quaternion, scaledDelta * (isFocus ? 8 : 6));
+    groupRef.current.quaternion.slerp(orient.quaternion, scaledDelta * (isFocus ? 4 : 6));
 
     // 轻微位置摆动，不再旋转面朝外
     const floatY = Math.sin(time * 0.6 + data.sway) * 0.05;
@@ -121,20 +122,32 @@ const PolaroidCard: React.FC<{
         if (onScreenSelect && groupRef.current) {
           const box = new THREE.Box3().setFromObject(groupRef.current);
           const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const cam = e.camera as THREE.PerspectiveCamera;
+          const halfSize = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+
           const toScreen = (vec: THREE.Vector3) => {
-            const ndc = vec.clone().project(cam);
+            const ndc = vec.clone().project(camera);
             return {
-              x: (ndc.x * 0.5 + 0.5) * window.innerWidth,
-              y: (-ndc.y * 0.5 + 0.5) * window.innerHeight
+              x: (ndc.x * 0.5 + 0.5) * size.width,
+              y: (-ndc.y * 0.5 + 0.5) * size.height
             };
           };
-          const c2d = toScreen(center);
-          const right = toScreen(center.clone().add(new THREE.Vector3(size.x / 2, 0, 0)));
-          const up = toScreen(center.clone().add(new THREE.Vector3(0, size.y / 2, 0)));
-          const width = Math.max(40, Math.abs(right.x - c2d.x) * 2);
-          const height = Math.max(40, Math.abs(up.y - c2d.y) * 2);
+
+          const corners = [
+            new THREE.Vector3(center.x + halfSize.x, center.y + halfSize.y, center.z),
+            new THREE.Vector3(center.x - halfSize.x, center.y + halfSize.y, center.z),
+            new THREE.Vector3(center.x + halfSize.x, center.y - halfSize.y, center.z),
+            new THREE.Vector3(center.x - halfSize.x, center.y - halfSize.y, center.z)
+          ].map(toScreen);
+
+          const xs = corners.map((c) => c.x);
+          const ys = corners.map((c) => c.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          const width = Math.max(40, maxX - minX);
+          const height = Math.max(40, maxY - minY);
+          const c2d = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
           onScreenSelect({
             id: data.photo.id,
             src: data.photo.fullSrc || data.photo.src,
