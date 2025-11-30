@@ -14,6 +14,7 @@ type Props = {
   focusPhotoId?: string | null;
   focusActive?: boolean;
   focusTarget?: { x: number; y: number } | null;
+  onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
 };
 
 type PhotoData = {
@@ -35,7 +36,8 @@ const PolaroidCard: React.FC<{
   focusPhotoId?: string | null;
   focusActive?: boolean;
   focusTarget?: { x: number; y: number } | null;
-}> = ({ data, mode, theme, onSelect, timeScale, focusPhotoId, focusActive, focusTarget }) => {
+  onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
+}> = ({ data, mode, theme, onSelect, timeScale, focusPhotoId, focusActive, focusTarget, onScreenSelect }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -116,6 +118,29 @@ const PolaroidCard: React.FC<{
       ref={groupRef}
       onClick={(e) => {
         e.stopPropagation();
+        if (onScreenSelect && groupRef.current) {
+          const box = new THREE.Box3().setFromObject(groupRef.current);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const cam = e.camera as THREE.PerspectiveCamera;
+          const toScreen = (vec: THREE.Vector3) => {
+            const ndc = vec.clone().project(cam);
+            return {
+              x: (ndc.x * 0.5 + 0.5) * window.innerWidth,
+              y: (-ndc.y * 0.5 + 0.5) * window.innerHeight
+            };
+          };
+          const c2d = toScreen(center);
+          const right = toScreen(center.clone().add(new THREE.Vector3(size.x / 2, 0, 0)));
+          const up = toScreen(center.clone().add(new THREE.Vector3(0, size.y / 2, 0)));
+          const width = Math.max(40, Math.abs(right.x - c2d.x) * 2);
+          const height = Math.max(40, Math.abs(up.y - c2d.y) * 2);
+          onScreenSelect({
+            id: data.photo.id,
+            src: data.photo.fullSrc || data.photo.src,
+            from: { x: c2d.x - width / 2, y: c2d.y - height / 2, width, height }
+          });
+        }
         onSelect({ clientX: e.nativeEvent.clientX, clientY: e.nativeEvent.clientY });
       }}
     >

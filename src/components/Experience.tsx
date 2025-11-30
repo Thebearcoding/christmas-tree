@@ -20,9 +20,10 @@ type Props = {
   focusPhotoId: string | null;
   focusActive: boolean;
   focusTarget?: { x: number; y: number } | null;
+  onScreenSelect?: (payload: { id: string; src: string; from: { x: number; y: number; width: number; height: number } }) => void;
 };
 
-export const Experience: React.FC<Props> = ({ mode, theme, photos, onSelectPhoto, handPosition, timeScale = 1, focusPhotoId, focusActive, focusTarget }) => {
+export const Experience: React.FC<Props> = ({ mode, theme, photos, onSelectPhoto, handPosition, timeScale = 1, focusPhotoId, focusActive, focusTarget, onScreenSelect }) => {
   const controlsRef = useRef<any>(null);
 
   useFrame((_, delta) => {
@@ -91,6 +92,7 @@ export const Experience: React.FC<Props> = ({ mode, theme, photos, onSelectPhoto
           focusPhotoId={focusPhotoId}
           focusActive={focusActive}
           focusTarget={focusTarget}
+          onScreenSelect={onScreenSelect}
         />
         <TreeStar mode={mode} theme={theme} height={14} timeScale={timeScale} />
         <ContactShadows opacity={0.75} scale={30} blur={2} far={5} color="#000000" />

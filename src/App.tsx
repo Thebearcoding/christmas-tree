@@ -6,6 +6,7 @@ import { Experience } from './components/Experience';
 import { GestureController } from './components/GestureController';
 import { UIOverlay } from './components/UIOverlay';
 import { MemoryOverlay } from './components/MemoryOverlay';
+import { FlyingPolaroid } from './components/FlyingPolaroid';
 import type { CommentEntry, HandPosition, PhotoEntry, ThemeKey } from './types';
 import { TreeMode } from './types';
 import { DEFAULT_THEME_KEY, THEMES } from './theme';
@@ -73,6 +74,7 @@ export default function App() {
   const [handPosition, setHandPosition] = useState<HandPosition>({ x: 0.5, y: 0.5, detected: false });
   const [gestureEnabled, setGestureEnabled] = useState(false);
   const [detailCardPos, setDetailCardPos] = useState<{ x: number; y: number } | null>(null);
+  const [handoff, setHandoff] = useState<{ id: string; src: string; from: { x: number; y: number; width: number; height: number } } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedUrlsRef = useRef<string[]>([]);
@@ -165,6 +167,7 @@ export default function App() {
       setCommentDraft('');
       setDetailState('idle');
       setDetailCardPos(null);
+      setHandoff(null);
     }, 500);
   };
 
@@ -182,6 +185,7 @@ export default function App() {
             focusPhotoId={focusPhotoId}
             focusActive={focusActive}
             focusTarget={focusActive ? detailCardPos : null}
+            onScreenSelect={(payload) => setHandoff(payload)}
           />
         </Suspense>
       </Canvas>
@@ -232,6 +236,16 @@ export default function App() {
         cardAnchor={detailCardPos}
         onAnchorChange={setDetailCardPos}
       />
+
+      {/* 手动共享元素过渡（从 3D 拍立得飞到左侧卡片） */}
+      {handoff && detailCardPos && (
+        <FlyingPolaroid
+          src={handoff.src}
+          from={handoff.from}
+          to={detailCardPos}
+          onDone={() => setHandoff(null)}
+        />
+      )}
 
       <GestureController currentMode={mode} onModeChange={setMode} onHandPosition={setHandPosition} enabled={gestureEnabled} />
     </div>

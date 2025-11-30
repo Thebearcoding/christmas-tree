@@ -13,8 +13,8 @@ type Props = {
   onCommentChange: (text: string) => void;
   onSubmitComment: () => void;
   onClose: () => void;
-  cardAnchor?: { x: number; y: number } | null;
-  onAnchorChange?: (pos: { x: number; y: number } | null) => void;
+  cardAnchor?: { x: number; y: number; width?: number; height?: number } | null;
+  onAnchorChange?: (pos: { x: number; y: number; width: number; height: number } | null) => void;
 };
 
 export const MemoryOverlay: React.FC<Props> = ({
@@ -46,7 +46,12 @@ export const MemoryOverlay: React.FC<Props> = ({
     const measure = () => {
       const rect = imageRef.current?.getBoundingClientRect();
       if (rect) {
-        onAnchorChange({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+        onAnchorChange({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          width: rect.width,
+          height: rect.height
+        });
       }
     };
     measure();
