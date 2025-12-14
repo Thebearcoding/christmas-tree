@@ -7,23 +7,47 @@ type Props = {
   currentMode: TreeMode;
   onModeChange: (mode: TreeMode) => void;
   onHandPosition?: (pos: HandPosition) => void;
+  onPinch?: () => void;
   enabled: boolean;
 };
 
-export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, onHandPosition, enabled }) => {
+export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, onHandPosition, onPinch, enabled }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState('Initializing gesture AI...');
   const [ready, setReady] = useState(false);
   const lastMode = useRef<TreeMode>(currentMode);
+  const onModeChangeRef = useRef(onModeChange);
+  const onHandPositionRef = useRef(onHandPosition);
+  const onPinchRef = useRef(onPinch);
 
   const openFrames = useRef(0);
   const closedFrames = useRef(0);
+  const pinchFrames = useRef(0);
+  const releaseFrames = useRef(0);
+  const pinchLatched = useRef(false);
+  const pinchUiUntil = useRef(0);
+  const pinchUiText = useRef('');
   const CONFIDENCE = 5;
+  const PINCH_CONFIDENCE = 4;
+  const PINCH_RATIO_ON = 0.32;
+  const PINCH_RATIO_OFF = 0.42;
 
   useEffect(() => {
     lastMode.current = currentMode;
   }, [currentMode]);
+
+  useEffect(() => {
+    onModeChangeRef.current = onModeChange;
+  }, [onModeChange]);
+
+  useEffect(() => {
+    onHandPositionRef.current = onHandPosition;
+  }, [onHandPosition]);
+
+  useEffect(() => {
+    onPinchRef.current = onPinch;
+  }, [onPinch]);
 
   useEffect(() => {
     let handLandmarker: HandLandmarker | null = null;
@@ -47,7 +71,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
 
     if (!enabled) {
       setStatus('Gesture off');
-      onHandPosition?.({ x: 0.5, y: 0.5, detected: false });
+      onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
       cleanup();
       return cleanup;
     }
@@ -98,7 +122,39 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
       const palmCenterX = (landmarks[0].x + landmarks[5].x + landmarks[9].x + landmarks[13].x + landmarks[17].x) / 5;
       const palmCenterY = (landmarks[0].y + landmarks[5].y + landmarks[9].y + landmarks[13].y + landmarks[17].y) / 5;
 
-      onHandPosition?.({ x: palmCenterX, y: palmCenterY, detected: true });
+      onHandPositionRef.current?.({ x: palmCenterX, y: palmCenterY, detected: true });
+
+      // Pinch detection (thumb tip 4 + index tip 8), normalized by palm width
+      const thumbTip = landmarks[4];
+      const indexTip = landmarks[8];
+      const indexMcp = landmarks[5];
+      const pinkyMcp = landmarks[17];
+      const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+      const palmWidth = Math.hypot(indexMcp.x - pinkyMcp.x, indexMcp.y - pinkyMcp.y);
+      const pinchRatio = pinchDist / Math.max(1e-6, palmWidth);
+      const now = performance.now();
+
+      const isPinched = pinchRatio < PINCH_RATIO_ON;
+      const isReleased = pinchRatio > PINCH_RATIO_OFF;
+      if (isPinched) {
+        pinchFrames.current++;
+        releaseFrames.current = 0;
+      } else if (isReleased) {
+        releaseFrames.current++;
+        pinchFrames.current = 0;
+      } else {
+        pinchFrames.current = Math.max(0, pinchFrames.current - 1);
+        releaseFrames.current = Math.max(0, releaseFrames.current - 1);
+      }
+
+      if (!pinchLatched.current && pinchFrames.current > PINCH_CONFIDENCE) {
+        pinchLatched.current = true;
+        pinchUiText.current = 'Pinch → Next Memory';
+        pinchUiUntil.current = now + 900;
+        onPinchRef.current?.();
+      } else if (pinchLatched.current && releaseFrames.current > PINCH_CONFIDENCE) {
+        pinchLatched.current = false;
+      }
 
       const fingerTips = [8, 12, 16, 20];
       const fingerBases = [5, 9, 13, 17];
@@ -112,32 +168,37 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
         if (distTip > distBase * 1.5) extended++;
       }
 
-      const thumbTip = landmarks[4];
       const thumbBase = landmarks[2];
       const distThumbTip = Math.hypot(thumbTip.x - wrist.x, thumbTip.y - wrist.y);
       const distThumbBase = Math.hypot(thumbBase.x - wrist.x, thumbBase.y - wrist.y);
       if (distThumbTip > distThumbBase * 1.2) extended++;
 
+      let baseStatus = 'Detected: ...';
       if (extended >= 4) {
         openFrames.current++;
         closedFrames.current = 0;
-        setStatus('Detected: OPEN (Unleash)');
+        baseStatus = 'Detected: OPEN (Unleash)';
         if (openFrames.current > CONFIDENCE && lastMode.current !== TreeMode.CHAOS) {
           lastMode.current = TreeMode.CHAOS;
-          onModeChange(TreeMode.CHAOS);
+          onModeChangeRef.current(TreeMode.CHAOS);
         }
       } else if (extended <= 1) {
         closedFrames.current++;
         openFrames.current = 0;
-        setStatus('Detected: CLOSED (Restore)');
+        baseStatus = 'Detected: CLOSED (Restore)';
         if (closedFrames.current > CONFIDENCE && lastMode.current !== TreeMode.FORMED) {
           lastMode.current = TreeMode.FORMED;
-          onModeChange(TreeMode.FORMED);
+          onModeChangeRef.current(TreeMode.FORMED);
         }
       } else {
         openFrames.current = 0;
         closedFrames.current = 0;
-        setStatus('Detected: ...');
+      }
+
+      if (now < pinchUiUntil.current && pinchUiText.current) {
+        setStatus(`${baseStatus} · ${pinchUiText.current}`);
+      } else {
+        setStatus(baseStatus);
       }
     };
 
@@ -152,7 +213,12 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
           detectGesture(landmarks);
         } else {
           setStatus('No hand detected');
-          onHandPosition?.({ x: 0.5, y: 0.5, detected: false });
+          onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
+          openFrames.current = 0;
+          closedFrames.current = 0;
+          pinchFrames.current = 0;
+          releaseFrames.current = 0;
+          pinchLatched.current = false;
           if (canvasRef.current) {
             const ctx = canvasRef.current.getContext('2d');
             ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -199,7 +265,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
     return () => {
       cleanup();
     };
-  }, [enabled, onModeChange, onHandPosition]);
+  }, [enabled]);
 
   return (
     <div

@@ -30,31 +30,89 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const height = 14; // match foliage height
   const baseRadius = 5.8;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // for even turn spacing
 
   const { balls, gifts, lights } = useMemo(() => {
     const ballList: InstanceData[] = [];
     const giftList: InstanceData[] = [];
     const lightList: InstanceData[] = [];
+    const placedTargets: THREE.Vector3[] = []; // used to avoid dense overlaps
+    const slices = 12;
+    const sliceWeights: number[] = [];
+    for (let s = 0; s < slices; s++) {
+      const y0 = s / slices;
+      const y1 = (s + 1) / slices;
+      const mid = (y0 + y1) * 0.5;
+      const r0 = Math.max(0.35, baseRadius * (1 - y0));
+      const r1 = Math.max(0.35, baseRadius * (1 - y1));
+      const avgCirc = Math.PI * (r0 + r1);
+      const dy = (y1 - y0) * height;
+      const bias = 1 + (1 - mid) * 0.8; // heavier bottom
+      sliceWeights.push(avgCirc * dy * bias);
+    }
 
-    const topExtras = Math.max(8, Math.floor(count * 0.08)); // slightly fewer at the crown
-    const total = count + topExtras;
+    const weightSum = sliceWeights.reduce((a, b) => a + b, 0);
+    let sliceCounts = sliceWeights.map((w, idx) => {
+      const minCount = idx >= slices - 2 ? 6 : 8;
+      return Math.max(minCount, Math.round((w / weightSum) * count));
+    });
+    let diff = sliceCounts.reduce((a, b) => a + b, 0) - count;
+    // Adjust counts to match total
+    while (diff !== 0) {
+      for (let s = 0; s < slices && diff !== 0; s++) {
+        if (diff > 0 && sliceCounts[s] > 8) {
+          sliceCounts[s]--;
+          diff--;
+        } else if (diff < 0) {
+          sliceCounts[s]++;
+          diff++;
+        }
+      }
+    }
 
-    for (let i = 0; i < total; i++) {
-      const roll = Math.random();
-      const type: OrnamentKind = roll > 0.9 ? 'light' : roll > 0.75 ? 'gift' : 'ball';
+    let globalIndex = 0;
+    for (let s = 0; s < slices; s++) {
+      const bandCount = sliceCounts[s];
+      const y0 = s / slices;
+      const y1 = (s + 1) / slices;
+      const isTopBand = s >= slices - 2;
+      const isTop = isTopBand;
 
-      // Reserve a handful that hug the tip
-      const isTop = i >= count;
-      const yNorm = isTop ? 0.88 + Math.random() * 0.1 : Math.pow(Math.random(), 2.4);
-      const yRaw = yNorm * height + 0.6;
-      const y = Math.min(yRaw, height - 0.25); // cap near top
-      const radius = Math.max(0.5, baseRadius * (1 - yNorm) + (isTop ? 0.25 : 0.6));
-      const theta = y * 9 + Math.random() * Math.PI * 2;
-      const targetPos = new THREE.Vector3(
-        radius * Math.cos(theta),
-        y,
-        radius * Math.sin(theta)
-      );
+      for (let j = 0; j < bandCount; j++) {
+        const roll = Math.random();
+        const topWeight = isTopBand ? 1 : 0;
+        let type: OrnamentKind;
+        if (topWeight) {
+          // Crown: only balls + lights, no gifts
+          type = roll > 0.5 ? 'light' : 'ball';
+        } else if (roll > 0.9) {
+          type = 'light';
+        } else if (roll > 0.75) {
+          type = 'gift';
+        } else {
+          type = 'ball';
+        }
+
+        const frac = (j + Math.random()) / bandCount;
+        let yNorm = y0 + frac * (y1 - y0);
+        yNorm += (Math.random() - 0.5) * 0.01;
+        yNorm = Math.min(0.99, Math.max(0, yNorm));
+
+        const rBase = Math.max(0.35, baseRadius * (1 - yNorm));
+        const radialFalloff = Math.pow(1 - yNorm, 1.18);
+        let radius = rBase + radialFalloff * 0.35 + (Math.random() - 0.5) * 0.2;
+        if (isTopBand) {
+          radius = Math.max(0.06, radius * 0.25);
+        }
+
+        let theta = globalIndex * goldenAngle + (Math.random() - 0.5) * 0.25;
+        const yRaw = yNorm * height + 0.6;
+        const y = Math.min(yRaw, height - 0.25); // cap near top
+        const targetPos = new THREE.Vector3(
+          radius * Math.cos(theta),
+          y,
+          radius * Math.sin(theta)
+        );
 
       const chaosRadius = 18 + Math.random() * 12;
       const cTheta = Math.random() * Math.PI * 2;
@@ -65,12 +123,52 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
         chaosRadius * Math.cos(cPhi)
       );
 
-      const scale =
+      let scale =
         type === 'light'
           ? 0.16 + Math.random() * 0.05
           : type === 'gift'
             ? 0.34 + Math.random() * 0.2
-            : 0.26 + Math.random() * 0.25;
+            : 0.24 + Math.random() * 0.22;
+      if (isTop && type === 'ball') {
+        scale = 0.22 + Math.random() * 0.14; // larger balls at the crown
+      }
+
+      // Push away from previously placed targets to reduce visible overlaps
+      const baseSpacing = type === 'ball' ? 0.65 : 0.85;
+      const minSpacing = baseSpacing * (isTop ? 0.65 : 1) * (0.9 + scale);
+      let placedPos = targetPos.clone();
+      for (let attempt = 0; attempt < 10; attempt++) {
+        let adjusted = false;
+        for (const p of placedTargets) {
+          const dist = placedPos.distanceTo(p);
+          if (dist < minSpacing) {
+            adjusted = true;
+            const dir = dist < 1e-3 ? new THREE.Vector3(Math.cos(theta), 0, Math.sin(theta)) : placedPos.clone().sub(p);
+            dir.y = 0;
+            if (dir.lengthSq() < 1e-4) dir.set(Math.cos(theta), 0, Math.sin(theta));
+            dir.normalize();
+            const push = (minSpacing - dist) + 0.04;
+            placedPos.add(dir.multiplyScalar(push));
+            placedPos.y += isTop ? 0.01 : 0;
+            break;
+          }
+        }
+        if (!adjusted) break;
+      }
+      // Clamp back to a cone envelope to avoid flying out after pushes
+      const yRatio = Math.min(1, Math.max(0, (placedPos.y - 0.6) / height));
+      const maxRadiusAtY = Math.max(0.35, baseRadius * (1 - yRatio) + 0.6);
+      const horiz = new THREE.Vector2(placedPos.x, placedPos.z);
+      const len = horiz.length();
+      if (len > maxRadiusAtY) {
+        horiz.multiplyScalar(maxRadiusAtY / (len + 1e-6));
+        placedPos.x = horiz.x;
+        placedPos.z = horiz.y;
+      }
+      placedPos.y = Math.min(placedPos.y, height - 0.2);
+
+      targetPos.copy(placedPos);
+      placedTargets.push(placedPos.clone());
 
       const palette =
         type === 'light' ? theme.lightColors : type === 'gift' ? theme.giftColors : theme.ballColors;
@@ -88,9 +186,12 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
         wobble
       };
 
-      if (type === 'ball') ballList.push(data);
-      else if (type === 'gift') giftList.push(data);
-      else lightList.push(data);
+        if (type === 'ball') ballList.push(data);
+        else if (type === 'gift') giftList.push(data);
+        else lightList.push(data);
+
+        globalIndex++;
+      }
     }
 
     return { balls: ballList, gifts: giftList, lights: lightList };

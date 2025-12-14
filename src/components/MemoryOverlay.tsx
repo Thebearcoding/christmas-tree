@@ -126,7 +126,7 @@ export const MemoryOverlay: React.FC<Props> = ({
               width: '88%',
               maxWidth: '520px',
               aspectRatio: '0.72',
-              background: '#fdfdfd',
+              background: theme.paper,
               borderRadius: 12,
               boxShadow: '0 18px 40px rgba(0,0,0,0.5)',
               padding: '12px 12px 26px 12px',
@@ -144,7 +144,7 @@ export const MemoryOverlay: React.FC<Props> = ({
                 width: '38%',
                 height: 6,
                 left: '31%',
-                background: '#d4af37',
+                background: theme.gold,
                 borderRadius: 4,
                 filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))'
               }}

@@ -5,9 +5,12 @@ type Props = {
   from: { x: number; y: number; width: number; height: number };
   to: { x: number; y: number; width?: number; height?: number };
   onDone: () => void;
+  colors?: { paper?: string; gold?: string };
 };
 
-export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone }) => {
+export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone, colors }) => {
+  const paper = colors?.paper ?? '#cf3838ff';
+  const gold = colors?.gold ?? '#d4af37';
   const [style, setStyle] = useState(() => ({
     left: from.x,
     top: from.y,
@@ -60,31 +63,32 @@ export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone }) => {
           position: 'relative',
           width: '100%',
           height: '100%',
-          background: '#fdfdfd',
+          background: paper,
           borderRadius: 12,
-          padding: '8px 8px 18px 8px',
+          padding: '12px 12px 26px 12px',
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
-          boxShadow: '0 15px 35px rgba(0,0,0,0.45)'
+          boxShadow: '0 18px 40px rgba(0,0,0,0.5)',
+          border: '1px solid rgba(0,0,0,0.08)'
         }}
       >
         <div
           style={{
             position: 'absolute',
-            top: 8,
-            width: '40%',
+            top: 10,
+            width: '38%',
             height: 6,
-            left: '30%',
-            background: '#d4af37',
+            left: '31%',
+            background: gold,
             borderRadius: 4,
             filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))'
           }}
         />
-        <div style={{ flex: 1, borderRadius: 8, overflow: 'hidden', background: '#0f172a' }}>
+        <div style={{ flex: 1, borderRadius: 10, overflow: 'hidden', background: '#0f172a', display: 'flex' }}>
           <img src={src} alt="memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
-        <div style={{ textAlign: 'center', fontSize: 13, color: '#111827', letterSpacing: '0.1em', fontWeight: 700 }}>
+        <div style={{ textAlign: 'center', fontSize: 15, color: '#111827', letterSpacing: '0.12em', fontWeight: 800 }}>
           Memory
         </div>
       </div>

@@ -6,7 +6,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
     emerald: '#0b2a1a',
     gold: '#D4AF37',
     accent: '#F5E6BF',
-    paper: '#fdfdfd',
+    paper: '#fdfdfd', // 稍暖米白，贴近树上拍立得纸色
     ink: '#111827',
     ballColors: ['#D4AF37', '#b3082b', '#f5d492', '#c4161c', '#ffe6a7'],
     lightColors: ['#FFD700', '#fff3c4'],

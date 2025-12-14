@@ -14,6 +14,10 @@ type Props = {
   usingUploads: boolean;
   gestureEnabled: boolean;
   onToggleGesture: () => void;
+  musicEnabled: boolean;
+  musicAvailable: boolean;
+  musicBlocked: boolean;
+  onToggleMusic: () => void;
 };
 
 export const UIOverlay: React.FC<Props> = ({
@@ -28,7 +32,11 @@ export const UIOverlay: React.FC<Props> = ({
   ornamentCount,
   usingUploads,
   gestureEnabled,
-  onToggleGesture
+  onToggleGesture,
+  musicEnabled,
+  musicAvailable,
+  musicBlocked,
+  onToggleMusic
 }) => {
   const currentTheme = themes[themeKey];
   const accent = currentTheme.gold;
@@ -125,6 +133,23 @@ export const UIOverlay: React.FC<Props> = ({
               }}
             >
               {gestureEnabled ? '关闭手势' : '开启手势'}
+            </button>
+            <button
+              onClick={onToggleMusic}
+              disabled={!musicAvailable}
+              style={{
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: `1px solid ${accent}`,
+                background: musicEnabled ? 'rgba(212,175,55,0.14)' : 'rgba(0,0,0,0.35)',
+                color: accent,
+                fontWeight: 700,
+                cursor: musicAvailable ? 'pointer' : 'not-allowed',
+                letterSpacing: '1px',
+                opacity: musicAvailable ? 1 : 0.55
+              }}
+            >
+              {musicAvailable ? (musicBlocked ? '点一下开音乐' : musicEnabled ? '关闭音乐' : '开启音乐') : '无音乐'}
             </button>
           </div>
         </div>
