@@ -157,7 +157,7 @@ export const MemoryOverlay: React.FC<Props> = ({
               />
             </div>
             <div style={{ textAlign: 'center', fontSize: 15, color: '#111827', letterSpacing: '0.12em', fontWeight: 800 }}>
-              {photo.title || 'Memory'}
+              {photo.title || '回忆'}
             </div>
           </div>
         </div>
@@ -166,7 +166,7 @@ export const MemoryOverlay: React.FC<Props> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
             <div>
               <div style={{ fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', color: theme.gold }}>
-                Memory Studio
+                回忆工坊
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: '#f7f2e8', lineHeight: 1.2 }}>{photo.title}</div>
             </div>

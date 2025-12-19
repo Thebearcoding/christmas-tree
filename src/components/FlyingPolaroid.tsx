@@ -89,7 +89,7 @@ export const FlyingPolaroid: React.FC<Props> = ({ src, from, to, onDone, colors 
           <img src={src} alt="memory" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div style={{ textAlign: 'center', fontSize: 15, color: '#111827', letterSpacing: '0.12em', fontWeight: 800 }}>
-          Memory
+          回忆
         </div>
       </div>
     </div>

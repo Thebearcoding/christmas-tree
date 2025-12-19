@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { PhotoEntry, Theme } from '../types';
 import { TreeMode } from '../types';
@@ -44,6 +43,7 @@ const PolaroidCard: React.FC<{
   const groupRef = useRef<THREE.Group>(null);
   const stringRef = useRef<THREE.Mesh>(null);
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
+  const [captionTexture, setCaptionTexture] = useState<THREE.Texture | null>(null);
   const [loadError, setLoadError] = useState(false);
   const focusPosition = useMemo(() => new THREE.Vector3(0, 9, 8), []);
   const focusDistanceRef = useRef<number>(8);
@@ -58,25 +58,146 @@ const PolaroidCard: React.FC<{
   const showHanger = mode === TreeMode.FORMED && !isFocus;
 
   useEffect(() => {
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      data.photo.src,
-      (tex) => {
+    let cancelled = false;
+    let activeTexture: THREE.Texture | null = null;
+    let activeBitmap: ImageBitmap | null = null;
+
+    const dispose = () => {
+      try {
+        activeTexture?.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        activeBitmap?.close?.();
+      } catch {
+        // ignore
+      }
+      activeTexture = null;
+      activeBitmap = null;
+    };
+
+    const isMobile = /iPad|iPhone|iPod|Android|Mobi/i.test(navigator.userAgent);
+    const maxTextureSize = isMobile ? 512 : 1024;
+
+    const loadTexture = async () => {
+      try {
+        const res = await fetch(data.photo.src, { cache: 'force-cache' });
+        if (!res.ok) throw new Error(`failed to fetch: ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+
+        if (typeof createImageBitmap !== 'function') {
+          throw new Error('createImageBitmap unavailable');
+        }
+
+        const bitmap = await createImageBitmap(blob);
+        activeBitmap = bitmap;
+        if (cancelled) return;
+
+        const ratio = Math.min(1, maxTextureSize / Math.max(bitmap.width, bitmap.height));
+        const targetW = Math.max(1, Math.round(bitmap.width * ratio));
+        const targetH = Math.max(1, Math.round(bitmap.height * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas 2d unavailable');
+        ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+
+        const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
+        tex.generateMipmaps = false;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        activeTexture = tex;
+
         setTexture(tex);
         setLoadError(false);
-        const img: any = tex.image;
-        if (img?.width && img?.height) {
-          const aspect = img.width / img.height;
-          const w = aspect >= 1 ? aspect : 1;
-          const h = aspect >= 1 ? 1 : 1 / aspect;
-          setPhotoScale(new THREE.Vector2(w, h));
-        }
-      },
-      undefined,
-      () => setLoadError(true)
-    );
+
+        const aspect = targetW / targetH;
+        const w = aspect >= 1 ? aspect : 1;
+        const h = aspect >= 1 ? 1 : 1 / aspect;
+        setPhotoScale(new THREE.Vector2(w, h));
+      } catch {
+        if (cancelled) return;
+        const loader = new THREE.TextureLoader();
+        loader.load(
+          data.photo.src,
+          (tex) => {
+            if (cancelled) {
+              tex.dispose();
+              return;
+            }
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.generateMipmaps = false;
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            activeTexture = tex;
+            setTexture(tex);
+            setLoadError(false);
+            const img: any = tex.image;
+            if (img?.width && img?.height) {
+              const aspect = img.width / img.height;
+              const w = aspect >= 1 ? aspect : 1;
+              const h = aspect >= 1 ? 1 : 1 / aspect;
+              setPhotoScale(new THREE.Vector2(w, h));
+            }
+          },
+          undefined,
+          () => setLoadError(true)
+        );
+      }
+    };
+
+    loadTexture();
+
+    return () => {
+      cancelled = true;
+      dispose();
+    };
   }, [data.photo.src]);
+
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const text = loadError ? 'Missing' : data.label;
+    const maxWidth = canvas.width * 0.9;
+    const fontFamily =
+      '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif';
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = theme.gold;
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 10;
+
+    let fontSize = 56;
+    while (fontSize >= 22) {
+      ctx.font = `600 ${fontSize}px ${fontFamily}`;
+      if (ctx.measureText(text).width <= maxWidth) break;
+      fontSize -= 4;
+    }
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    setCaptionTexture(tex);
+
+    return () => {
+      tex.dispose();
+    };
+  }, [data.label, loadError, theme.gold]);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
@@ -254,16 +375,12 @@ const PolaroidCard: React.FC<{
             <meshStandardMaterial color={theme.gold} metalness={0.9} roughness={0.1} />
           </mesh>
 
-          <Text
-            position={[0, -0.6, 0.03]}
-            fontSize={0.14}
-            color={theme.gold}
-            anchorX="center"
-            anchorY="middle"
-            letterSpacing={0.05}
-          >
-            {loadError ? 'Missing' : data.label}
-          </Text>
+          {captionTexture && (
+            <mesh position={[0, -0.6, 0.031]}>
+              <planeGeometry args={[1.02, 0.24]} />
+              <meshBasicMaterial map={captionTexture} transparent toneMapped={false} />
+            </mesh>
+          )}
         </group>
       </group>
     </>
@@ -310,7 +427,7 @@ export const Polaroids: React.FC<Props> = ({ mode, photos, theme, onSelect, time
         outwardOffset,
         speed: 0.6 + Math.random() * 0.8,
         sway: Math.random() * 100,
-        label: photo.title || `Memory ${i + 1}`
+        label: photo.title || `回忆 ${i + 1}`
       };
     });
   }, [limited]);

@@ -21,9 +21,10 @@ type Props = {
   count: number;
   theme: Theme;
   timeScale?: number;
+  quality?: 'high' | 'low';
 };
 
-export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }) => {
+export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1, quality = 'high' }) => {
   const ballsRef = useRef<THREE.InstancedMesh>(null);
   const giftsRef = useRef<THREE.InstancedMesh>(null);
   const lightsRef = useRef<THREE.InstancedMesh>(null);
@@ -31,6 +32,9 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
   const height = 14; // match foliage height
   const baseRadius = 5.8;
   const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // for even turn spacing
+  const lowQuality = quality === 'low';
+  const ballSegments = lowQuality ? 16 : 32;
+  const lightSegments = lowQuality ? 8 : 12;
 
   const { balls, gifts, lights } = useMemo(() => {
     const ballList: InstanceData[] = [];
@@ -259,8 +263,8 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
     <>
       {balls.length > 0 && (
         <instancedMesh ref={ballsRef} args={[undefined, undefined, balls.length]}>
-          <sphereGeometry args={[1, 32, 32]} />
-          <meshStandardMaterial roughness={0.12} metalness={0.9} envMapIntensity={1.4} />
+          <sphereGeometry args={[1, ballSegments, ballSegments]} />
+          <meshStandardMaterial roughness={0.1} metalness={0.9} envMapIntensity={1.5} />
         </instancedMesh>
       )}
 
@@ -273,7 +277,7 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1 }
 
       {lights.length > 0 && (
         <instancedMesh ref={lightsRef} args={[undefined, undefined, lights.length]}>
-          <sphereGeometry args={[1, 12, 12]} />
+          <sphereGeometry args={[1, lightSegments, lightSegments]} />
           <meshStandardMaterial emissive="white" emissiveIntensity={2.3} toneMapped={false} color="white" />
         </instancedMesh>
       )}

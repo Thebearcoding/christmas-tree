@@ -3,11 +3,15 @@ export enum TreeMode {
   FORMED = 'FORMED'
 }
 
+export type TwoStopGradient = { bottom: string; top: string };
+
 export interface Theme {
   label: string;
   emerald: string;
   gold: string;
   accent: string;
+  formedGradient: TwoStopGradient;
+  chaosGradient: TwoStopGradient;
   paper: string;
   ink: string;
   ballColors: string[];
@@ -18,6 +22,30 @@ export interface Theme {
 }
 
 export type ThemeKey = 'imperial' | 'frost' | 'berry';
+
+export type ThemeOverrides = Partial<
+  Pick<
+    Theme,
+    | 'emerald'
+    | 'gold'
+    | 'accent'
+    | 'formedGradient'
+    | 'chaosGradient'
+    | 'paper'
+    | 'ink'
+    | 'ballColors'
+    | 'lightColors'
+    | 'giftColors'
+    | 'background'
+    | 'vignette'
+  >
+>;
+
+export type ThemeCustomizationStorage = {
+  version: 1;
+  enabledByThemeKey?: Partial<Record<ThemeKey, boolean>>;
+  overridesByThemeKey?: Partial<Record<ThemeKey, ThemeOverrides>>;
+};
 
 export interface PhotoEntry {
   id: string;

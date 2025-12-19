@@ -3,6 +3,23 @@ import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { HandPosition } from '../types';
 import { TreeMode } from '../types';
 
+const joinBase = (base: string, pathname: string) => {
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+  return `${normalizedBase}${pathname.replace(/^\/+/, '')}`;
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(`${label} timeout`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+};
+
 type Props = {
   currentMode: TreeMode;
   onModeChange: (mode: TreeMode) => void;
@@ -14,7 +31,7 @@ type Props = {
 export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, onHandPosition, onPinch, enabled }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [status, setStatus] = useState('Initializing gesture AI...');
+  const [status, setStatus] = useState('手势初始化中…');
   const [ready, setReady] = useState(false);
   const lastMode = useRef<TreeMode>(currentMode);
   const onModeChangeRef = useRef(onModeChange);
@@ -50,11 +67,13 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
   }, [onPinch]);
 
   useEffect(() => {
+    let cancelled = false;
     let handLandmarker: HandLandmarker | null = null;
     let rafId = 0;
     let stream: MediaStream | null = null;
 
     const cleanup = () => {
+      cancelled = true;
       cancelAnimationFrame(rafId);
       handLandmarker?.close();
       if (stream) {
@@ -70,11 +89,19 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
     };
 
     if (!enabled) {
-      setStatus('Gesture off');
+      setStatus('手势：关闭');
       onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
       cleanup();
       return cleanup;
     }
+
+    openFrames.current = 0;
+    closedFrames.current = 0;
+    pinchFrames.current = 0;
+    releaseFrames.current = 0;
+    pinchLatched.current = false;
+    pinchUiUntil.current = 0;
+    pinchUiText.current = '';
 
     const drawSkeleton = (landmarks: any[]) => {
       if (!canvasRef.current || !videoRef.current) return;
@@ -149,7 +176,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
 
       if (!pinchLatched.current && pinchFrames.current > PINCH_CONFIDENCE) {
         pinchLatched.current = true;
-        pinchUiText.current = 'Pinch → Next Memory';
+        pinchUiText.current = '捏合 → 下一张回忆';
         pinchUiUntil.current = now + 900;
         onPinchRef.current?.();
       } else if (pinchLatched.current && releaseFrames.current > PINCH_CONFIDENCE) {
@@ -173,11 +200,11 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
       const distThumbBase = Math.hypot(thumbBase.x - wrist.x, thumbBase.y - wrist.y);
       if (distThumbTip > distThumbBase * 1.2) extended++;
 
-      let baseStatus = 'Detected: ...';
+      let baseStatus = '检测中…';
       if (extended >= 4) {
         openFrames.current++;
         closedFrames.current = 0;
-        baseStatus = 'Detected: OPEN (Unleash)';
+        baseStatus = '检测：张开（散开）';
         if (openFrames.current > CONFIDENCE && lastMode.current !== TreeMode.CHAOS) {
           lastMode.current = TreeMode.CHAOS;
           onModeChangeRef.current(TreeMode.CHAOS);
@@ -185,7 +212,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
       } else if (extended <= 1) {
         closedFrames.current++;
         openFrames.current = 0;
-        baseStatus = 'Detected: CLOSED (Restore)';
+        baseStatus = '检测：握拳（聚合）';
         if (closedFrames.current > CONFIDENCE && lastMode.current !== TreeMode.FORMED) {
           lastMode.current = TreeMode.FORMED;
           onModeChangeRef.current(TreeMode.FORMED);
@@ -203,6 +230,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
     };
 
     const predictWebcam = () => {
+      rafId = requestAnimationFrame(predictWebcam);
       if (!handLandmarker || !videoRef.current) return;
       const now = performance.now();
       if (videoRef.current.videoWidth > 0) {
@@ -212,7 +240,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
           drawSkeleton(landmarks);
           detectGesture(landmarks);
         } else {
-          setStatus('No hand detected');
+          setStatus('未检测到手');
           onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
           openFrames.current = 0;
           closedFrames.current = 0;
@@ -225,38 +253,109 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
           }
         }
       }
-      rafId = requestAnimationFrame(predictWebcam);
     };
 
-    const startWebcam = async () => {
+    const startWebcam = async (): Promise<boolean> => {
+      if (!window.isSecureContext) {
+        setStatus('摄像头需要 HTTPS（请用 https:// 打开）');
+        return false;
+      }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setStatus('Camera unavailable');
-        return;
+        setStatus('摄像头不可用');
+        return false;
       }
 
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } });
-        if (!videoRef.current) return;
+        if (!videoRef.current) return false;
         videoRef.current.srcObject = stream;
-        videoRef.current.addEventListener('loadeddata', predictWebcam);
+        try {
+          await videoRef.current.play();
+        } catch {
+          // ignore (some browsers block autoplay even for muted video)
+        }
+        if (cancelled) return false;
         setReady(true);
-        setStatus('Waiting for hand...');
+        return true;
       } catch (err) {
-        setStatus('Permission denied');
+        const domErr = err as { name?: string };
+        if (domErr?.name === 'NotAllowedError') setStatus('摄像头权限被拒绝');
+        else if (domErr?.name === 'NotFoundError') setStatus('未找到摄像头');
+        else setStatus('摄像头错误');
+        return false;
       }
     };
 
     const setup = async () => {
       try {
-        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm');
-        handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: '/models/hand_landmarker.task', delegate: 'GPU' },
-          runningMode: 'VIDEO',
-          numHands: 1
-        });
-        startWebcam();
+        setStatus('请求摄像头权限…');
+        const cameraOk = await startWebcam();
+        if (!cameraOk || cancelled) return;
+
+        setStatus('加载手势模型…');
+        const base = import.meta.env.BASE_URL || '/';
+        const mediapipeBase = joinBase(base, 'mediapipe');
+        const modelPath = joinBase(base, 'models/hand_landmarker.task');
+
+        const isMobile =
+          /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(navigator.userAgent || '') ||
+          /iPad/i.test(navigator.userAgent || '') ||
+          // iPadOS 13+ reports as Mac; detect touch
+          (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1);
+
+        // Quick local asset probe so we can fail with a helpful message instead of hanging forever.
+        try {
+          const wasmProbe = await fetch(joinBase(mediapipeBase, 'vision_wasm_internal.wasm'), { method: 'HEAD' });
+          const modelProbe = await fetch(modelPath, { method: 'HEAD' });
+          if (!wasmProbe.ok || !modelProbe.ok) {
+            throw new Error(`asset probe failed (wasm:${wasmProbe.status}, model:${modelProbe.status})`);
+          }
+        } catch {
+          // keep going; resolver may still succeed (or CDN fallback may work)
+        }
+
+        let vision;
+        try {
+          vision = await withTimeout(FilesetResolver.forVisionTasks(mediapipeBase), 12_000, 'local wasm');
+        } catch (localErr) {
+          // CDN fallback, use same major/minor as the installed package to avoid version mismatch.
+          const cdnBase = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm';
+          vision = await withTimeout(FilesetResolver.forVisionTasks(cdnBase), 12_000, 'cdn wasm');
+          // If CDN works but local doesn't, surface a hint (once we're stable).
+          if (!cancelled) console.warn('mediapipe local wasm failed, using CDN', localErr);
+        }
+        if (cancelled) return;
+
+        const preferredDelegate: 'GPU' | 'CPU' = isMobile ? 'CPU' : 'GPU';
+
+        const createLandmarker = (delegate: 'GPU' | 'CPU') =>
+          withTimeout(
+            HandLandmarker.createFromOptions(vision, {
+              baseOptions: { modelAssetPath: modelPath, delegate },
+            runningMode: 'VIDEO',
+            numHands: 1
+            }),
+            18_000,
+            `create ${delegate}`
+          );
+
+        try {
+          handLandmarker = await createLandmarker(preferredDelegate);
+        } catch {
+          const fallbackDelegate: 'GPU' | 'CPU' = preferredDelegate === 'GPU' ? 'CPU' : 'GPU';
+          handLandmarker = await createLandmarker(fallbackDelegate);
+        }
+        if (cancelled) return;
+
+        setStatus('请把手放到镜头前…');
+        rafId = requestAnimationFrame(predictWebcam);
       } catch (err) {
-        setStatus('Gesture unavailable');
+        const message = err instanceof Error ? err.message : '';
+        if (/timeout/i.test(message)) {
+          setStatus('手势模型加载超时（请检查 /mediapipe 和 /models 是否可访问）');
+        } else {
+          setStatus('手势不可用');
+        }
       }
     };
 

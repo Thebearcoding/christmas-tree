@@ -2,12 +2,13 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Loader } from '@react-three/drei';
 import { v4 as uuidv4 } from 'uuid';
+import type { WebGLRenderer } from 'three';
 import { Experience } from './components/Experience';
 import { GestureController } from './components/GestureController';
 import { UIOverlay } from './components/UIOverlay';
 import { MemoryOverlay } from './components/MemoryOverlay';
 import { FlyingPolaroid } from './components/FlyingPolaroid';
-import type { CommentEntry, HandPosition, PhotoEntry, ThemeKey } from './types';
+import type { CommentEntry, HandPosition, PhotoEntry, Theme, ThemeCustomizationStorage, ThemeKey, ThemeOverrides } from './types';
 import { TreeMode } from './types';
 import { DEFAULT_THEME_KEY, THEMES } from './theme';
 import { MUSIC_TRACKS } from './music';
@@ -18,6 +19,14 @@ const DEFAULT_MUSIC_VOLUME = 0.35;
 
 const THUMB_MAX_SIZE = 640;
 const FULL_MAX_SIZE = 1920;
+const isProbablyMobileDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isIPad = /iPad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isMobile = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(ua);
+  return isIPad || isMobile;
+};
+
 const DEFAULT_PHOTO_FILES = [
   '1.JPG',
   '042161097c88df0fe1cf99b4423f19b8.JPG',
@@ -45,6 +54,27 @@ const DEFAULT_PHOTO_ENTRIES: PhotoEntry[] = DEFAULT_PHOTO_PATHS.map((src, index)
   title: index === 0 ? '树顶之光' : `记忆 ${index}`
 }));
 const STORAGE_KEY = 'grand-tree-photos';
+const THEME_CUSTOMIZATION_STORAGE_KEY = 'grand-tree-theme-customization-v1';
+
+const pad2 = (value: number) => String(value).padStart(2, '0');
+const formatTimestamp = (date: Date) => {
+  const yyyy = date.getFullYear();
+  const mm = pad2(date.getMonth() + 1);
+  const dd = pad2(date.getDate());
+  const hh = pad2(date.getHours());
+  const min = pad2(date.getMinutes());
+  const ss = pad2(date.getSeconds());
+  return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+};
+
+const fileToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
 
 const createScaledImageUrl = (file: File, maxSize: number, quality = 0.9): Promise<string> => {
   return new Promise((resolve) => {
@@ -65,21 +95,95 @@ const createScaledImageUrl = (file: File, maxSize: number, quality = 0.9): Promi
         URL.revokeObjectURL(objectUrl);
         resolve(dataUrl);
       } else {
-        URL.revokeObjectURL(objectUrl);
-        resolve(objectUrl);
+        fileToDataUrl(file).then((dataUrl) => {
+          if (dataUrl) {
+            URL.revokeObjectURL(objectUrl);
+            resolve(dataUrl);
+            return;
+          }
+          resolve(objectUrl);
+        });
       }
     };
     img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(objectUrl);
+      fileToDataUrl(file).then((dataUrl) => {
+        if (dataUrl) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(dataUrl);
+          return;
+        }
+        resolve(objectUrl);
+      });
     };
     img.src = objectUrl;
   });
 };
 
+const isHexColor = (value: string) => /^#[0-9a-fA-F]{6}$/.test(value);
+
+const normalizeTwoStopGradient = (value: unknown, fallback: { bottom: string; top: string }) => {
+  if (!value || typeof value !== 'object') return fallback;
+  const v = value as { bottom?: unknown; top?: unknown };
+  const bottom = typeof v.bottom === 'string' && isHexColor(v.bottom) ? v.bottom : fallback.bottom;
+  const top = typeof v.top === 'string' && isHexColor(v.top) ? v.top : fallback.top;
+  return { bottom, top };
+};
+
+const normalizeColorArray = (value: unknown, fallback: string[]) => {
+  if (!Array.isArray(value)) return fallback;
+  const filtered = value.filter((v) => typeof v === 'string' && isHexColor(v)) as string[];
+  return filtered.length ? filtered : fallback;
+};
+
+const mergeThemeWithOverrides = (base: Theme, overrides: ThemeOverrides | undefined): Theme => {
+  const baseFormed = base.formedGradient ?? { bottom: base.emerald, top: base.emerald };
+  const baseChaos = base.chaosGradient ?? { bottom: base.gold, top: base.gold };
+  const formedGradient = overrides?.formedGradient
+    ? normalizeTwoStopGradient(overrides.formedGradient, baseFormed)
+    : baseFormed;
+  const chaosGradient = overrides?.chaosGradient
+    ? normalizeTwoStopGradient(overrides.chaosGradient, baseChaos)
+    : baseChaos;
+
+  const emerald = overrides?.emerald && isHexColor(overrides.emerald) ? overrides.emerald : formedGradient.bottom;
+  const gold = overrides?.gold && isHexColor(overrides.gold) ? overrides.gold : chaosGradient.bottom;
+
+  return {
+    ...base,
+    ...overrides,
+    emerald,
+    gold,
+    accent: overrides?.accent && isHexColor(overrides.accent) ? overrides.accent : base.accent,
+    formedGradient,
+    chaosGradient,
+    paper: overrides?.paper && isHexColor(overrides.paper) ? overrides.paper : base.paper,
+    ink: overrides?.ink && isHexColor(overrides.ink) ? overrides.ink : base.ink,
+    background: overrides?.background && isHexColor(overrides.background) ? overrides.background : base.background,
+    ballColors: overrides?.ballColors ? normalizeColorArray(overrides.ballColors, base.ballColors) : base.ballColors,
+    lightColors: overrides?.lightColors ? normalizeColorArray(overrides.lightColors, base.lightColors) : base.lightColors,
+    giftColors: overrides?.giftColors ? normalizeColorArray(overrides.giftColors, base.giftColors) : base.giftColors
+  };
+};
+
 export default function App() {
   const [mode, setMode] = useState<TreeMode>(TreeMode.CHAOS);
   const [themeKey, setThemeKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
+  const [themeCustomization, setThemeCustomization] = useState<ThemeCustomizationStorage>(() => {
+    const empty: ThemeCustomizationStorage = { version: 1, enabledByThemeKey: {}, overridesByThemeKey: {} };
+    try {
+      const raw = localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY);
+      if (!raw) return empty;
+      const parsed = JSON.parse(raw) as Partial<ThemeCustomizationStorage> | null;
+      if (!parsed || parsed.version !== 1) return empty;
+      return {
+        version: 1,
+        enabledByThemeKey: parsed.enabledByThemeKey ?? {},
+        overridesByThemeKey: parsed.overridesByThemeKey ?? {}
+      };
+    } catch {
+      return empty;
+    }
+  });
   const [photoEntries, setPhotoEntries] = useState<PhotoEntry[]>(DEFAULT_PHOTO_ENTRIES);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [detailState, setDetailState] = useState<'idle' | 'enter' | 'active' | 'exit'>('idle');
@@ -89,8 +193,12 @@ export default function App() {
   const [commentDraft, setCommentDraft] = useState('');
   const [handPosition, setHandPosition] = useState<HandPosition>({ x: 0.5, y: 0.5, detected: false });
   const [gestureEnabled, setGestureEnabled] = useState(false);
+  const [lowQuality] = useState(() => isProbablyMobileDevice());
   const [detailCardPos, setDetailCardPos] = useState<{ x: number; y: number; width?: number; height?: number } | null>(null);
   const [handoff, setHandoff] = useState<{ id: string; src: string; from: { x: number; y: number; width: number; height: number } } | null>(null);
+  const [exportReady, setExportReady] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [musicEnabled, setMusicEnabled] = useState(() => {
     if (MUSIC_TRACKS.length === 0) return false;
     try {
@@ -107,7 +215,9 @@ export default function App() {
 
   const musicRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadedUrlsRef = useRef<string[]>([]);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const overlayCaptureRef = useRef<HTMLDivElement>(null);
+  const exportMessageTimeoutRef = useRef<number | null>(null);
   const musicAvailable = MUSIC_TRACKS.length > 0;
 
   useEffect(() => {
@@ -183,14 +293,16 @@ export default function App() {
   const persistPhotos = (entries: PhotoEntry[]) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      return true;
     } catch (err) {
       console.warn('failed to save photos', err);
+      return false;
     }
   };
 
   useEffect(() => {
     return () => {
-      uploadedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      if (exportMessageTimeoutRef.current) window.clearTimeout(exportMessageTimeoutRef.current);
     };
   }, []);
 
@@ -205,30 +317,33 @@ export default function App() {
             id: uuidv4(),
             src: thumbUrl,
             fullSrc: fullUrl,
-            title: `Memory ${index + 1}`
-          },
-          urls: [thumbUrl, fullUrl]
+            title: `回忆 ${index + 1}`
+          }
         };
       })
     );
 
-    uploadedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    uploadedUrlsRef.current = processed.flatMap((p) => p.urls);
+    const newEntries = processed.map((p) => p.entry);
+    const baseEntries = photoEntries.every((p) => p.src.startsWith('/photos/')) ? [] : photoEntries;
+    const nextEntries = [...newEntries, ...baseEntries];
+    setPhotoEntries(nextEntries);
+    const savedOk = persistPhotos(nextEntries);
+    if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
+    if (nextEntries.some((p) => p.src.startsWith('blob:') || p.fullSrc.startsWith('blob:'))) {
+      showExportMessage('提示：部分照片无法持久化（刷新后会丢失）', 3500);
+    }
 
-    const entries = processed.map((p) => p.entry);
-    setPhotoEntries(entries);
-    persistPhotos(entries);
-    setSelectedPhotoId(entries[0]?.id ?? null);
-    setDetailState(entries[0] ? 'enter' : 'idle');
-    requestAnimationFrame(() => setDetailState(entries[0] ? 'active' : 'idle'));
+    const firstNew = newEntries[0];
+    setSelectedPhotoId(firstNew?.id ?? null);
+    setDetailState(firstNew ? 'enter' : 'idle');
+    requestAnimationFrame(() => setDetailState(firstNew ? 'active' : 'idle'));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const resetPhotos = () => {
-    uploadedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    uploadedUrlsRef.current = [];
     setPhotoEntries(DEFAULT_PHOTO_ENTRIES);
-    persistPhotos(DEFAULT_PHOTO_ENTRIES);
+    const savedOk = persistPhotos(DEFAULT_PHOTO_ENTRIES);
+    if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
     setSelectedPhotoId(null);
     setDetailState('idle');
     setCommentDraft('');
@@ -239,8 +354,14 @@ export default function App() {
   const selectedNote = selectedPhoto ? notesByPhoto[selectedPhoto.id] ?? '' : '';
   const selectedComments = selectedPhoto ? commentsByPhoto[selectedPhoto.id] ?? [] : [];
 
-  const theme = THEMES[themeKey];
-  const usingUploads = uploadedUrlsRef.current.length > 0;
+  const baseTheme = THEMES[themeKey];
+  const themeOverrides = themeCustomization.overridesByThemeKey?.[themeKey];
+  const customEnabled =
+    themeCustomization.enabledByThemeKey?.[themeKey] ??
+    (themeOverrides ? Object.keys(themeOverrides).length > 0 : false);
+  const customTheme = mergeThemeWithOverrides(baseTheme, themeOverrides);
+  const theme = customEnabled ? customTheme : baseTheme;
+  const usingUploads = photoEntries.some((p) => !p.src.startsWith('/photos/'));
   const polaroidCount = Math.min(photoEntries.length, 48);
   const timeScale = detailState === 'idle' ? 1 : 0.22;
   const focusPhotoId = selectedPhoto?.id ?? null;
@@ -300,6 +421,20 @@ export default function App() {
     setMusicEnabled(false);
   };
 
+  const handleToggleGesture = () => {
+    if (!gestureEnabled) {
+      if (!window.isSecureContext) {
+        window.alert('手势需要 HTTPS 才能打开摄像头（请用 https:// 地址访问）');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        window.alert('当前浏览器不支持摄像头手势功能');
+        return;
+      }
+    }
+    setGestureEnabled((g) => !g);
+  };
+
   const handleGesturePinch = () => {
     if (detailState === 'exit') return;
     if (photoEntries.length === 0) return;
@@ -318,9 +453,213 @@ export default function App() {
     setCommentDraft('');
   };
 
+  const showExportMessage = (message: string, ttlMs = 2200) => {
+    setExportMessage(message);
+    if (exportMessageTimeoutRef.current) window.clearTimeout(exportMessageTimeoutRef.current);
+    exportMessageTimeoutRef.current = window.setTimeout(() => setExportMessage(null), ttlMs);
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(themeCustomization));
+    } catch (err) {
+      console.warn('failed to save theme customization', err);
+      showExportMessage('主题保存失败：空间不足（刷新后可能会丢失）', 3500);
+    }
+  }, [themeCustomization]);
+
+  const handleToggleCustomTheme = () => {
+    setThemeCustomization((prev) => {
+      const enabledByThemeKey = { ...(prev.enabledByThemeKey ?? {}) };
+      enabledByThemeKey[themeKey] = !(enabledByThemeKey[themeKey] ?? false);
+      return { ...prev, enabledByThemeKey };
+    });
+  };
+
+  const patchThemeOverrides = (patch: ThemeOverrides) => {
+    setThemeCustomization((prev) => {
+      const overridesByThemeKey = { ...(prev.overridesByThemeKey ?? {}) };
+      const existing = overridesByThemeKey[themeKey] ?? {};
+      overridesByThemeKey[themeKey] = { ...existing, ...patch };
+      const enabledByThemeKey = { ...(prev.enabledByThemeKey ?? {}) };
+      enabledByThemeKey[themeKey] = true;
+      return { ...prev, overridesByThemeKey, enabledByThemeKey };
+    });
+  };
+
+  const resetThemeOverrides = () => {
+    setThemeCustomization((prev) => {
+      const overridesByThemeKey = { ...(prev.overridesByThemeKey ?? {}) };
+      delete overridesByThemeKey[themeKey];
+      const enabledByThemeKey = { ...(prev.enabledByThemeKey ?? {}) };
+      enabledByThemeKey[themeKey] = false;
+      return { ...prev, overridesByThemeKey, enabledByThemeKey };
+    });
+  };
+
+  const downloadPngBlob = async (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
+  const canvasToPngBlob = async (canvas: HTMLCanvasElement): Promise<Blob | null> => {
+    return await new Promise((resolve) => {
+      try {
+        canvas.toBlob((value) => resolve(value), 'image/png');
+      } catch {
+        resolve(null);
+      }
+    });
+  };
+
+  const exportFilename = (kind: 'scene' | 'postcard') => {
+    return `grand-tree-${formatTimestamp(new Date())}-${themeKey.toLowerCase()}-${String(mode).toLowerCase()}-${kind}.png`;
+  };
+
+  const handleExportScenePng = async () => {
+    if (exportBusy) return;
+    const renderer = rendererRef.current;
+    if (!renderer) {
+      showExportMessage('导出失败：渲染器未就绪');
+      return;
+    }
+
+    setExportBusy(true);
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const canvas = renderer.domElement;
+      const filename = exportFilename('scene');
+      const blob = await canvasToPngBlob(canvas);
+
+      if (blob) {
+        await downloadPngBlob(blob, filename);
+        showExportMessage('已导出场景 PNG');
+        return;
+      }
+
+      const dataUrl = canvas.toDataURL('image/png');
+      if (!dataUrl || dataUrl === 'data:,') throw new Error('empty data URL');
+
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      link.click();
+      showExportMessage('已导出场景 PNG');
+    } catch (err) {
+      console.warn('export failed', err);
+      showExportMessage('导出失败：请稍后再试');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const elementToImage = async (element: HTMLElement): Promise<HTMLImageElement> => {
+    const rect = element.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('video').forEach((node) => node.remove());
+    clone.querySelectorAll('canvas').forEach((node) => node.remove());
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    wrapper.style.width = `${width}px`;
+    wrapper.style.height = `${height}px`;
+    wrapper.appendChild(clone);
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:${width}px;height:${height}px;">
+            ${wrapper.innerHTML}
+          </div>
+        </foreignObject>
+      </svg>
+    `.trim();
+
+    const img = new Image();
+    img.decoding = 'async';
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    const loaded = new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('overlay image load failed'));
+    });
+    img.src = url;
+    await loaded;
+    return img;
+  };
+
+  const handleExportPostcardPng = async () => {
+    if (exportBusy) return;
+    const renderer = rendererRef.current;
+    const overlayEl = overlayCaptureRef.current;
+    if (!renderer) {
+      showExportMessage('导出失败：渲染器未就绪');
+      return;
+    }
+    if (!overlayEl) {
+      showExportMessage('导出失败：界面未就绪');
+      return;
+    }
+
+    setExportBusy(true);
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const glCanvas = renderer.domElement;
+      const out = document.createElement('canvas');
+      out.width = glCanvas.width;
+      out.height = glCanvas.height;
+      const ctx = out.getContext('2d');
+      if (!ctx) throw new Error('2d context missing');
+
+      ctx.drawImage(glCanvas, 0, 0);
+
+      const overlayImg = await elementToImage(overlayEl);
+      ctx.drawImage(overlayImg, 0, 0, out.width, out.height);
+
+      const filename = exportFilename('postcard');
+      const blob = await canvasToPngBlob(out);
+      if (!blob) throw new Error('postcard blob missing');
+
+      await downloadPngBlob(blob, filename);
+      showExportMessage('已导出明信片 PNG');
+    } catch (err) {
+      console.warn('postcard export failed', err);
+      showExportMessage('导出失败：部分界面可能无法截图（建议用浏览器截图）', 3500);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   return (
     <div style={{ width: '100vw', height: '100vh', background: theme.background ?? '#000', position: 'relative', overflow: 'hidden' }}>
-      <Canvas dpr={[1, 2]} camera={{ position: [0, 4, 20], fov: 45 }} gl={{ antialias: false, stencil: false, alpha: false }} shadows>
+      <Canvas
+        dpr={lowQuality ? 1 : [1, 2]}
+        camera={{ position: [0, 4, 20], fov: 45 }}
+        gl={{
+          antialias: false,
+          stencil: false,
+          alpha: false,
+          preserveDrawingBuffer: true,
+          precision: lowQuality ? 'mediump' : 'highp',
+          powerPreference: 'high-performance'
+        }}
+        onCreated={({ gl }) => {
+          rendererRef.current = gl;
+          setExportReady(true);
+        }}
+        shadows={!lowQuality}
+      >
         <Suspense fallback={null}>
           <Experience
             mode={mode}
@@ -333,6 +672,7 @@ export default function App() {
             focusActive={focusActive}
             focusTarget={focusActive ? detailCardPos : null}
             onScreenSelect={(payload) => setHandoff(payload)}
+            quality={lowQuality ? 'low' : 'high'}
           />
         </Suspense>
       </Canvas>
@@ -358,7 +698,7 @@ export default function App() {
         src={musicAvailable ? MUSIC_TRACKS[musicIndex] : undefined}
         autoPlay={musicEnabled}
         playsInline
-        preload="auto"
+        preload={lowQuality ? 'metadata' : 'auto'}
         onEnded={() => {
           if (!musicAvailable) return;
           setMusicIndex((idx) => (idx + 1) % MUSIC_TRACKS.length);
@@ -366,59 +706,73 @@ export default function App() {
         style={{ display: 'none' }}
       />
 
-      <UIOverlay
-        themeKey={themeKey}
-        themes={THEMES}
-        onThemeChange={(key) => setThemeKey(key)}
-        onOpenUpload={() => fileInputRef.current?.click()}
-        onReset={resetPhotos}
-        mode={mode}
-        onToggleMode={() => setMode((prev) => (prev === TreeMode.CHAOS ? TreeMode.FORMED : TreeMode.CHAOS))}
-        photoCount={photoEntries.length}
-        ornamentCount={polaroidCount}
-        usingUploads={usingUploads}
-        gestureEnabled={gestureEnabled}
-        onToggleGesture={() => setGestureEnabled((g) => !g)}
-        musicEnabled={musicEnabled}
-        musicAvailable={musicAvailable}
-        musicBlocked={musicBlocked}
-        onToggleMusic={handleToggleMusic}
-      />
-
-      <MemoryOverlay
-        photo={selectedPhoto}
-        state={detailState}
-        origin={detailOrigin}
-        theme={theme}
-        note={selectedNote}
-        onNoteChange={handleNoteChange}
-        comments={selectedComments}
-        commentDraft={commentDraft}
-        onCommentChange={setCommentDraft}
-        onSubmitComment={handleAddComment}
-        onClose={closeDetail}
-        cardAnchor={detailCardPos}
-        onAnchorChange={setDetailCardPos}
-      />
-
-      {/* 手动共享元素过渡（从 3D 拍立得飞到左侧卡片） */}
-      {handoff && detailCardPos && (
-        <FlyingPolaroid
-          src={handoff.src}
-          from={handoff.from}
-          to={detailCardPos}
-          colors={{ paper: theme.paper, gold: theme.gold }}
-          onDone={() => setHandoff(null)}
+      <div ref={overlayCaptureRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <UIOverlay
+          themeKey={themeKey}
+          themes={THEMES}
+          baseTheme={baseTheme}
+          activeTheme={theme}
+          customTheme={customTheme}
+          customEnabled={customEnabled}
+          onToggleCustomEnabled={handleToggleCustomTheme}
+          onPatchThemeOverrides={patchThemeOverrides}
+          onResetThemeOverrides={resetThemeOverrides}
+          onThemeChange={(key) => setThemeKey(key)}
+          onOpenUpload={() => fileInputRef.current?.click()}
+          onReset={resetPhotos}
+          onExportScenePng={handleExportScenePng}
+          onExportPostcardPng={handleExportPostcardPng}
+          exportEnabled={exportReady}
+          exportBusy={exportBusy}
+          exportMessage={exportMessage}
+          mode={mode}
+          onToggleMode={() => setMode((prev) => (prev === TreeMode.CHAOS ? TreeMode.FORMED : TreeMode.CHAOS))}
+          photoCount={photoEntries.length}
+          ornamentCount={polaroidCount}
+          usingUploads={usingUploads}
+          gestureEnabled={gestureEnabled}
+          onToggleGesture={handleToggleGesture}
+          musicEnabled={musicEnabled}
+          musicAvailable={musicAvailable}
+          musicBlocked={musicBlocked}
+          onToggleMusic={handleToggleMusic}
         />
-      )}
 
-      <GestureController
-        currentMode={mode}
-        onModeChange={setMode}
-        onHandPosition={setHandPosition}
-        onPinch={handleGesturePinch}
-        enabled={gestureEnabled}
-      />
+        <MemoryOverlay
+          photo={selectedPhoto}
+          state={detailState}
+          origin={detailOrigin}
+          theme={theme}
+          note={selectedNote}
+          onNoteChange={handleNoteChange}
+          comments={selectedComments}
+          commentDraft={commentDraft}
+          onCommentChange={setCommentDraft}
+          onSubmitComment={handleAddComment}
+          onClose={closeDetail}
+          cardAnchor={detailCardPos}
+          onAnchorChange={setDetailCardPos}
+        />
+
+        {/* 手动共享元素过渡（从 3D 拍立得飞到左侧卡片） */}
+        {handoff && detailCardPos && (
+          <FlyingPolaroid
+            src={handoff.src}
+            from={handoff.from}
+            to={detailCardPos}
+            colors={{ paper: theme.paper, gold: theme.gold }}
+            onDone={() => setHandoff(null)}
+          />
+        )}
+
+        <GestureController
+          currentMode={mode}
+          onModeChange={setMode}
+          onHandPosition={setHandPosition}
+          onPinch={handleGesturePinch}
+          enabled={gestureEnabled}
+        />
+      </div>
     </div>
   );
 }

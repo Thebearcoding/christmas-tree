@@ -16,6 +16,7 @@ type Props = {
 const vertexShader = `
   uniform float uTime;
   uniform float uProgress;
+  uniform float uTreeHeight;
 
   attribute vec3 aChaosPos;
   attribute vec3 aTargetPos;
@@ -23,6 +24,7 @@ const vertexShader = `
 
   varying float vMix;
   varying float vSparkle;
+  varying float vYNorm;
 
   float cubicInOut(float t) {
     return t < 0.5
@@ -46,23 +48,29 @@ const vertexShader = `
 
     vMix = eased;
     vSparkle = sin(uTime * 4.0 + aRandom * 50.0);
+    vYNorm = clamp(aTargetPos.y / max(0.001, uTreeHeight), 0.0, 1.0);
   }
 `;
 
 const fragmentShader = `
-  uniform vec3 uChaosColor;
-  uniform vec3 uFormedColor;
+  uniform vec3 uChaosBottom;
+  uniform vec3 uChaosTop;
+  uniform vec3 uFormedBottom;
+  uniform vec3 uFormedTop;
   uniform vec3 uSparkleColor;
 
   varying float vMix;
   varying float vSparkle;
+  varying float vYNorm;
 
   void main() {
     float r = distance(gl_PointCoord, vec2(0.5));
     if (r > 0.5) discard;
 
     float alpha = pow(1.0 - r * 2.0, 1.8);
-    vec3 base = mix(uChaosColor, uFormedColor, vMix);
+    vec3 chaos = mix(uChaosBottom, uChaosTop, vYNorm);
+    vec3 formed = mix(uFormedBottom, uFormedTop, vYNorm);
+    vec3 base = mix(chaos, formed, vMix);
 
     float sparkle = smoothstep(0.92, 1.0, vSparkle);
     base += uSparkleColor * sparkle * 0.35;
@@ -111,21 +119,27 @@ export const Foliage: React.FC<Props> = ({ mode, count, theme, height = 14, radi
     () => ({
       uTime: { value: 0 },
       uProgress: { value: 0 },
-      uChaosColor: { value: new THREE.Color(theme.gold) },
-      uFormedColor: { value: new THREE.Color(theme.emerald) },
+      uTreeHeight: { value: height },
+      uChaosBottom: { value: new THREE.Color(theme.chaosGradient.bottom) },
+      uChaosTop: { value: new THREE.Color(theme.chaosGradient.top) },
+      uFormedBottom: { value: new THREE.Color(theme.formedGradient.bottom) },
+      uFormedTop: { value: new THREE.Color(theme.formedGradient.top) },
       uSparkleColor: { value: new THREE.Color(theme.accent) }
     }),
-    [theme]
+    [height, theme]
   );
 
   useEffect(() => {
     if (meshRef.current) {
       const material = meshRef.current.material as THREE.ShaderMaterial;
-      material.uniforms.uChaosColor.value.set(theme.gold);
-      material.uniforms.uFormedColor.value.set(theme.emerald);
+      material.uniforms.uTreeHeight.value = height;
+      material.uniforms.uChaosBottom.value.set(theme.chaosGradient.bottom);
+      material.uniforms.uChaosTop.value.set(theme.chaosGradient.top);
+      material.uniforms.uFormedBottom.value.set(theme.formedGradient.bottom);
+      material.uniforms.uFormedTop.value.set(theme.formedGradient.top);
       material.uniforms.uSparkleColor.value.set(theme.accent);
     }
-  }, [theme]);
+  }, [height, theme]);
 
   useFrame((_, delta) => {
     if (!meshRef.current) return;
