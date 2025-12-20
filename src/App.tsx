@@ -482,11 +482,11 @@ export default function App() {
     requestAnimationFrame(() => setDetailState('active'));
   };
 
-  const handleNoteChange = (text: string) => {
-    if (!selectedPhoto) return;
-    setNotesByPhoto((prev) => ({ ...prev, [selectedPhoto.id]: text }));
-    if (!shareId || !shareLoaded) return;
-    const key = selectedPhoto.id;
+	  const handleNoteChange = (text: string) => {
+	    if (!selectedPhoto) return;
+	    setNotesByPhoto((prev) => ({ ...prev, [selectedPhoto.id]: text }));
+	    if (!shareId || !shareLoaded) return;
+	    const key = selectedPhoto.id;
     if (noteSyncTimeoutsRef.current[key]) window.clearTimeout(noteSyncTimeoutsRef.current[key]);
     noteSyncTimeoutsRef.current[key] = window.setTimeout(() => {
       void patchShare(shareId, { notesByPhoto: { [key]: text } })
@@ -495,14 +495,39 @@ export default function App() {
           console.warn('save note failed', err);
           showExportMessage('同步失败：回忆主题可能未保存', 3500);
         });
-    }, 700);
-  };
+	    }, 700);
+	  };
 
-  const handleAddComment = () => {
-    if (!selectedPhoto) return;
-    const text = commentDraft.trim();
-    if (!text) return;
-    const photoId = selectedPhoto.id;
+	  const handleTitleCommit = (photoId: string, title: string) => {
+	    const nextTitle = title.slice(0, 80);
+	    let nextEntries: PhotoEntry[] | null = null;
+	    setPhotoEntries((prev) => {
+	      const idx = prev.findIndex((p) => p.id === photoId);
+	      if (idx < 0) return prev;
+	      if (prev[idx]?.title === nextTitle) return prev;
+	      nextEntries = prev.map((p) => (p.id === photoId ? { ...p, title: nextTitle } : p));
+	      return nextEntries;
+	    });
+	    if (!nextEntries) return;
+	    if (!shareMode) {
+	      const savedOk = persistPhotos(nextEntries);
+	      if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
+	      return;
+	    }
+	    if (!shareId || !shareLoaded) return;
+	    void patchShare(shareId, { photos: nextEntries })
+	      .then(({ doc }) => applyShareDoc(doc))
+	      .catch((err) => {
+	        console.warn('save title failed', err);
+	        showExportMessage('同步失败：回忆标题可能未保存', 3500);
+	      });
+	  };
+
+	  const handleAddComment = () => {
+	    if (!selectedPhoto) return;
+	    const text = commentDraft.trim();
+	    if (!text) return;
+	    const photoId = selectedPhoto.id;
     const comment = { id: uuidv4(), text, createdAt: Date.now() };
     setCommentsByPhoto((prev) => {
       const existing = prev[photoId] ?? [];
@@ -936,16 +961,17 @@ export default function App() {
           onResetShare={resetPhotos}
         />
 
-        <MemoryOverlay
-          photo={selectedPhoto}
-          state={detailState}
-          origin={detailOrigin}
-          theme={theme}
-          note={selectedNote}
-          onNoteChange={handleNoteChange}
-          comments={selectedComments}
-          commentDraft={commentDraft}
-          onCommentChange={setCommentDraft}
+	        <MemoryOverlay
+	          photo={selectedPhoto}
+	          state={detailState}
+	          origin={detailOrigin}
+	          theme={theme}
+	          onTitleCommit={handleTitleCommit}
+	          note={selectedNote}
+	          onNoteChange={handleNoteChange}
+	          comments={selectedComments}
+	          commentDraft={commentDraft}
+	          onCommentChange={setCommentDraft}
           onSubmitComment={handleAddComment}
           onClose={closeDetail}
           cardAnchor={detailCardPos}

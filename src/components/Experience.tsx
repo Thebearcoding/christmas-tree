@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Environment, OrbitControls, ContactShadows, Lightformer } from '@react-three/drei';
+import { Environment, OrbitControls, Lightformer } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import { useFrame } from '@react-three/fiber';
@@ -140,18 +140,17 @@ export const Experience: React.FC<Props> = ({ mode, theme, photos, onSelectPhoto
           focusActive={focusActive}
           focusTarget={focusTarget}
           onScreenSelect={onScreenSelect}
-        />
-        <TreeStar mode={mode} theme={theme} height={14} timeScale={timeScale} />
-        {!lowQuality && <ContactShadows opacity={0.75} scale={30} blur={2} far={5} color="#000000" />}
-      </group>
+	        />
+	        <TreeStar mode={mode} theme={theme} height={14} timeScale={timeScale} />
+	      </group>
 
-      {!lowQuality && (
-        <EffectComposer enableNormalPass={false}>
-          <Bloom luminanceThreshold={0.8} mipmapBlur intensity={1.2} radius={0.6} />
-          <Vignette eskil={false} offset={0.1} darkness={theme.vignette ?? 0.8} />
-          <Noise opacity={0.025} blendFunction={BlendFunction.OVERLAY} />
-        </EffectComposer>
-      )}
-    </>
-  );
+	      {!lowQuality && (
+	        <EffectComposer enableNormalPass={false}>
+	          <Bloom luminanceThreshold={0.8} mipmapBlur intensity={1.2} radius={0.6} />
+	          <Vignette eskil={false} offset={0.1} darkness={theme.vignette ?? 0.8} />
+	          <Noise opacity={0.012} blendFunction={BlendFunction.SOFT_LIGHT} />
+	        </EffectComposer>
+	      )}
+	    </>
+	  );
 };

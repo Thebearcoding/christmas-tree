@@ -277,12 +277,15 @@ export const UIOverlay: React.FC<Props> = ({
         <ColorSliders value={value} onChange={onChange} />
       </div>
     );
-  };
+	  };
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
+	  const accentRgb = hexToRgb(accent);
+	  const accentRgbCss = `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`;
+
+	  return (
+	    <div
+	      style={{
+	        position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
         display: 'flex',
@@ -331,310 +334,186 @@ export const UIOverlay: React.FC<Props> = ({
             />
           )}
 
-          {menuOpen && (
-            <div
-              style={{
-                position: isNarrow ? 'fixed' : 'relative',
-                top: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-top))` : undefined,
-                left: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-left))` : undefined,
-                right: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-right))` : undefined,
-                zIndex: 40,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                pointerEvents: 'auto',
-                background: 'rgba(0,0,0,0.45)',
-                padding: '12px 14px',
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 14px 40px rgba(0,0,0,0.45)',
-                maxWidth: isNarrow ? 'min(560px, calc(100vw - 24px))' : 'min(560px, 100%)',
-                maxHeight: isNarrow
-                  ? `calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
-                  : `calc(100vh - 48px)`,
-                overflow: 'auto',
-                overscrollBehavior: 'contain',
-                backdropFilter: 'blur(10px)'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 12, letterSpacing: '2px', color: '#c9b27a', textTransform: 'uppercase' }}>控制面板</div>
-                  <div style={{ fontSize: 12, color: '#b6b1a3', marginTop: 2 }}>
-                    {activeTheme.label}
-                    {shareId ? ' · 共享中' : ''}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setMenuOpen(false)}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    background: 'rgba(0,0,0,0.4)',
-                    color: '#fff',
-                    cursor: 'pointer',
-                    fontSize: 18,
-                    lineHeight: 1
-                  }}
-                  aria-label="关闭菜单"
-                >
-                  ×
-                </button>
-              </div>
+	          {menuOpen && (
+	            <div
+	              className="gt-control-panel"
+	              style={{
+	                position: isNarrow ? 'fixed' : 'relative',
+	                top: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-top))` : undefined,
+	                left: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-left))` : undefined,
+	                right: isNarrow ? `calc(${isNarrow ? 12 : 24}px + env(safe-area-inset-right))` : undefined,
+	                zIndex: 40,
+	                display: 'flex',
+	                flexDirection: 'column',
+	                gap: 24,
+	                pointerEvents: 'auto',
+	                padding: 20,
+	                maxWidth: isNarrow ? 'min(560px, calc(100vw - 24px))' : 'min(560px, 100%)',
+	                maxHeight: isNarrow
+	                  ? `calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
+	                  : `calc(100vh - 48px)`,
+	                overflow: 'auto',
+	                overscrollBehavior: 'contain',
+	                color: 'rgba(255,255,255,0.92)',
+	                fontFamily:
+	                  '"Inter","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif',
+	                ['--accent' as any]: accent,
+	                ['--accent-rgb' as any]: accentRgbCss
+	              }}
+	            >
+	              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+	                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+	                  <div style={{ fontSize: 22, fontWeight: 900, color: '#ffffff', letterSpacing: '0.02em' }}>控制面板</div>
+	                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+	                    {activeTheme.label}
+	                    {shareId ? ' · 共享中' : ''}
+	                  </div>
+	                </div>
+	                <button
+	                  onClick={() => setMenuOpen(false)}
+	                  className="gt-btn"
+	                  aria-label="关闭控制面板"
+	                  title="关闭"
+	                  style={{
+	                    width: 44,
+	                    height: 44,
+	                    padding: 0,
+	                    borderRadius: 16,
+	                    background: 'rgba(0,0,0,0.22)'
+	                  }}
+	                >
+	                  <span style={{ fontSize: 18, lineHeight: 1 }}>×</span>
+	                </button>
+	              </div>
 
-              <div style={{ fontSize: 12, letterSpacing: '2px', color: '#c9b27a', textTransform: 'uppercase' }}>主题</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {Object.entries(themes).map(([key, theme]) => (
-                  <button
-                    key={key}
-                    onClick={() => onThemeChange(key as ThemeKey)}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 999,
-                      border: themeKey === key ? `1px solid ${accent}` : '1px solid rgba(255,255,255,0.2)',
-                      background: themeKey === key ? 'rgba(212,175,55,0.16)' : 'rgba(0,0,0,0.35)',
-                      color: '#f5f5f5',
-                      fontSize: 12,
-                      letterSpacing: '1px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {theme.label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  onClick={onToggleCustomEnabled}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: customEnabled ? 'rgba(212,175,55,0.18)' : 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    letterSpacing: '1px'
-                  }}
-                >
-                  {customEnabled ? '自定义：开' : '自定义：关'}
-                </button>
-                <button
-                  onClick={() => setCustomizerOpen(true)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: 'rgba(0,0,0,0.35)',
-                    color: '#f5f5f5',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  自定义配色
-                </button>
-                <button
-                  onClick={() => {
-                    onResetThemeOverrides();
-                    setPaletteSliderOpen(null);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.25)',
-                    background: 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  重置主题
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  onClick={onOpenUpload}
-                  disabled={shareBusy}
-                  style={{
-                    padding: '10px 14px',
-                    background: `linear-gradient(135deg, ${accent}, #fff7d1)`,
-                    color: '#0d0d0d',
-                    border: 'none',
-                    borderRadius: 10,
-                    fontWeight: 700,
-                    cursor: shareBusy ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 10px 30px rgba(212,175,55,0.35)',
-                    opacity: shareBusy ? 0.65 : 1
-                  }}
-                >
-                  上传照片
-                </button>
-                {!shareId && (
-                  <button
-                    onClick={onReset}
-                    disabled={shareBusy}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.25)',
-                      background: 'rgba(0,0,0,0.35)',
-                      color: accent,
-                      fontWeight: 700,
-                      cursor: shareBusy ? 'not-allowed' : 'pointer',
-                      opacity: shareBusy ? 0.65 : 1
-                    }}
-                  >
-                    使用示例
-                  </button>
-                )}
-                <button
-                  onClick={onExportPostcardPng}
-                  disabled={!exportEnabled || exportBusy}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: exportBusy ? 'rgba(212,175,55,0.22)' : 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 700,
-                    cursor: exportEnabled && !exportBusy ? 'pointer' : 'not-allowed',
-                    letterSpacing: '1px',
-                    opacity: exportEnabled ? 1 : 0.55
-                  }}
-                >
-                  {exportBusy ? '导出中…' : '导出明信片'}
-                </button>
-                <button
-                  onClick={onExportScenePng}
-                  disabled={!exportEnabled || exportBusy}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 700,
-                    cursor: exportEnabled && !exportBusy ? 'pointer' : 'not-allowed',
-                    letterSpacing: '1px',
-                    opacity: exportEnabled ? 1 : 0.55
-                  }}
-                >
-                  {exportBusy ? '导出中…' : '导出场景'}
-                </button>
-                <button
-                  onClick={onToggleGesture}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: gestureEnabled ? 'rgba(212,175,55,0.14)' : 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    letterSpacing: '1px'
-                  }}
-                >
-                  {gestureEnabled ? '关闭手势' : '开启手势'}
-                </button>
-                <button
-                  onClick={onToggleMusic}
-                  disabled={!musicAvailable}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${accent}`,
-                    background: musicEnabled ? 'rgba(212,175,55,0.14)' : 'rgba(0,0,0,0.35)',
-                    color: accent,
-                    fontWeight: 700,
-                    cursor: musicAvailable ? 'pointer' : 'not-allowed',
-                    letterSpacing: '1px',
-                    opacity: musicAvailable ? 1 : 0.55
-                  }}
-                >
-                  {musicAvailable ? (musicBlocked ? '点一下开音乐' : musicEnabled ? '关闭音乐' : '开启音乐') : '无音乐'}
-                </button>
-              </div>
+	              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+	                <div className="gt-control-panel__section-title">主题预设</div>
+	                <div
+	                  className="gt-scroll-row"
+	                  style={{
+	                    display: 'flex',
+	                    gap: 12,
+	                    flexWrap: isNarrow ? 'nowrap' : 'wrap',
+	                    overflowX: isNarrow ? 'auto' : 'visible',
+	                    paddingBottom: isNarrow ? 2 : 0
+	                  }}
+	                >
+	                  {Object.entries(themes).map(([key, theme]) => {
+	                    const isActive = themeKey === key;
+	                    return (
+	                      <button
+	                        key={key}
+	                        onClick={() => onThemeChange(key as ThemeKey)}
+	                        className={`gt-btn gt-btn--pill ${isActive ? 'gt-btn--pill-active' : ''}`}
+	                        style={{ flex: isNarrow ? '0 0 auto' : undefined }}
+	                      >
+	                        {theme.label}
+	                      </button>
+	                    );
+	                  })}
+	                </div>
+	              </div>
+	              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+	                <div className="gt-control-panel__section-title">自定义</div>
+	                <div
+	                  style={{
+	                    display: 'grid',
+	                    gridTemplateColumns: isNarrow ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+	                    gap: 12
+	                  }}
+	                >
+	                  <button
+	                    onClick={onToggleCustomEnabled}
+	                    className={`gt-btn ${customEnabled ? 'gt-btn--toggle-on' : ''}`}
+	                    aria-pressed={customEnabled}
+	                  >
+	                    {customEnabled ? '自定义：开' : '自定义：关'}
+	                  </button>
+	                  <button onClick={() => setCustomizerOpen(true)} className="gt-btn">
+	                    自定义配色
+	                  </button>
+	                  <button
+	                    onClick={() => {
+	                      onResetThemeOverrides();
+	                      setPaletteSliderOpen(null);
+	                    }}
+	                    className="gt-btn"
+	                  >
+	                    重置主题
+	                  </button>
+	                </div>
+	                <div className="gt-control-panel__hint">提示：自定义会保存在当前浏览器；分享链接会同步给朋友。</div>
+	              </div>
+	              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+	                <div className="gt-control-panel__section-title">操作</div>
+	                <div
+	                  style={{
+	                    display: 'grid',
+	                    gridTemplateColumns: isNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+	                    gap: 12
+	                  }}
+	                >
+	                  <button onClick={onOpenUpload} disabled={shareBusy} className="gt-btn gt-btn--primary">
+	                    上传照片
+	                  </button>
+	                  {!shareId && (
+	                    <button onClick={onReset} disabled={shareBusy} className="gt-btn">
+	                      使用示例
+	                    </button>
+	                  )}
+	                  <button onClick={onExportPostcardPng} disabled={!exportEnabled || exportBusy} className="gt-btn">
+	                    {exportBusy ? '导出中…' : '导出明信片'}
+	                  </button>
+	                  <button onClick={onExportScenePng} disabled={!exportEnabled || exportBusy} className="gt-btn">
+	                    {exportBusy ? '导出中…' : '导出场景'}
+	                  </button>
+	                  <button onClick={onToggleGesture} className={`gt-btn ${gestureEnabled ? 'gt-btn--toggle-on' : ''}`}>
+	                    {gestureEnabled ? '关闭手势' : '开启手势'}
+	                  </button>
+	                  <button
+	                    onClick={onToggleMusic}
+	                    disabled={!musicAvailable}
+	                    className={`gt-btn ${musicEnabled ? 'gt-btn--toggle-on' : ''}`}
+	                  >
+	                    {musicAvailable ? (musicBlocked ? '点一下开音乐' : musicEnabled ? '关闭音乐' : '开启音乐') : '无音乐'}
+	                  </button>
+	                </div>
+	              </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {!shareId ? (
-                  <>
-                    <button
-                      onClick={onCreateShare}
-                      disabled={shareBusy}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: `1px solid ${accent}`,
-                        background: 'rgba(0,0,0,0.35)',
-                        color: accent,
-                        fontWeight: 800,
-                        cursor: shareBusy ? 'not-allowed' : 'pointer',
-                        letterSpacing: '1px',
-                        opacity: shareBusy ? 0.65 : 1
-                      }}
-                    >
-                      生成分享链接
-                    </button>
-                    <div style={{ fontSize: 12, color: '#9a9a9a' }}>提示：生成后照片会上传到云端。</div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: 12, color: '#b6b1a3' }}>共享中：{shareId.slice(0, 8)}…</div>
-                    <button
-                      onClick={onCopyShareLink}
-                      disabled={shareBusy}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: `1px solid ${accent}`,
-                        background: 'rgba(0,0,0,0.35)',
-                        color: accent,
-                        fontWeight: 800,
-                        cursor: shareBusy ? 'not-allowed' : 'pointer',
-                        opacity: shareBusy ? 0.65 : 1
-                      }}
-                    >
-                      复制链接
-                    </button>
-                    <button
-                      onClick={onExitShare}
-                      disabled={shareBusy}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: '1px solid rgba(255,255,255,0.25)',
-                        background: 'rgba(0,0,0,0.35)',
-                        color: '#f5f5f5',
-                        fontWeight: 700,
-                        cursor: shareBusy ? 'not-allowed' : 'pointer',
-                        opacity: shareBusy ? 0.65 : 1
-                      }}
-                    >
-                      退出共享
-                    </button>
-                    <button
-                      onClick={onResetShare}
-                      disabled={shareBusy}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: '1px solid rgba(255,255,255,0.25)',
-                        background: 'rgba(200,60,60,0.18)',
-                        color: '#ffd7d7',
-                        fontWeight: 800,
-                        cursor: shareBusy ? 'not-allowed' : 'pointer',
-                        opacity: shareBusy ? 0.65 : 1
-                      }}
-                    >
-                      清空共享内容
-                    </button>
-                    <div style={{ width: '100%', fontSize: 12, color: '#9a9a9a' }}>提示：拿到链接的人都可以查看和修改。</div>
-                  </>
-                )}
-              </div>
-              {exportMessage && <div style={{ fontSize: 12, color: '#e7e0d0', opacity: 0.9 }}>{exportMessage}</div>}
+	              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+	                <div className="gt-control-panel__section-title">{shareId ? '共享' : '分享'}</div>
+	                {!shareId ? (
+	                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+	                    <button onClick={onCreateShare} disabled={shareBusy} className="gt-btn gt-btn--primary" style={{ width: '100%' }}>
+	                      生成分享链接
+	                    </button>
+	                    <div className="gt-control-panel__hint">提示：生成后照片会上传到云端。</div>
+	                  </div>
+	                ) : (
+	                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+	                    <div className="gt-control-panel__hint">共享中：{shareId.slice(0, 8)}…</div>
+	                    <div
+	                      style={{
+	                        display: 'grid',
+	                        gridTemplateColumns: isNarrow ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+	                        gap: 12
+	                      }}
+	                    >
+	                      <button onClick={onCopyShareLink} disabled={shareBusy} className="gt-btn gt-btn--primary" style={{ width: '100%' }}>
+	                        复制链接
+	                      </button>
+	                      <button onClick={onExitShare} disabled={shareBusy} className="gt-btn">
+	                        退出共享
+	                      </button>
+	                      <button onClick={onResetShare} disabled={shareBusy} className="gt-btn gt-btn--danger">
+	                        清空共享内容
+	                      </button>
+	                    </div>
+	                    <div className="gt-control-panel__hint">提示：拿到链接的人都可以查看和修改。</div>
+	                  </div>
+	                )}
+	              </div>
+	              {exportMessage && <div className="gt-control-panel__message">{exportMessage}</div>}
             </div>
           )}
         </div>

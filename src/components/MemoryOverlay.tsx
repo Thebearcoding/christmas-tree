@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CommentEntry, PhotoEntry, Theme } from '../types';
 
 type Props = {
@@ -6,6 +6,7 @@ type Props = {
   state: 'idle' | 'enter' | 'active' | 'exit';
   origin: { x: number; y: number } | null;
   theme: Theme;
+  onTitleCommit: (photoId: string, title: string) => void;
   note: string;
   onNoteChange: (text: string) => void;
   comments: CommentEntry[];
@@ -22,6 +23,7 @@ export const MemoryOverlay: React.FC<Props> = ({
   state,
   origin,
   theme,
+  onTitleCommit,
   note,
   onNoteChange,
   comments,
@@ -34,6 +36,7 @@ export const MemoryOverlay: React.FC<Props> = ({
 }) => {
   const shouldRender = !!photo && state !== 'idle';
   const [narrowLayout, setNarrowLayout] = useState(() => window.innerWidth < 860);
+  const [titleDraft, setTitleDraft] = useState('');
 
   const centerOrigin = origin ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   const anchor = cardAnchor ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -41,6 +44,11 @@ export const MemoryOverlay: React.FC<Props> = ({
   const translateY = centerOrigin.y - anchor.y;
   const scaleFrom = 0.3;
   const imageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!photo) return;
+    setTitleDraft(photo.title ?? '');
+  }, [photo?.id]);
 
   useLayoutEffect(() => {
     if (!shouldRender || !imageRef.current || !onAnchorChange || state === 'exit') return;
@@ -82,6 +90,13 @@ export const MemoryOverlay: React.FC<Props> = ({
   const cardTransform = isActive ? `${baseCenter} translate3d(0,0,0) scale(1)` : `${baseCenter} translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleFrom})`;
   const backdropOpacity = isActive ? 0.45 : 0;
   const cardOpacity = isActive ? 1 : 0;
+
+  const commitTitle = () => {
+    if (!photo) return;
+    const next = titleDraft.trim();
+    if (next === photo.title) return;
+    onTitleCommit(photo.id, next);
+  };
 
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'auto' }}>
@@ -203,35 +218,52 @@ export const MemoryOverlay: React.FC<Props> = ({
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-            <div>
-              <div style={{ fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', color: theme.gold }}>
-                回忆工坊
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#f7f2e8', lineHeight: 1.2 }}>{photo.title}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  background: 'rgba(0,0,0,0.55)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff',
-                  borderRadius: 12,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  fontWeight: 700
-                }}
-              >
-                返回树
-              </button>
-              <button
-                onClick={onClose}
-                style={{
-                  background: 'rgba(0,0,0,0.4)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: '#fff',
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', color: theme.gold }}>
+                  回忆工坊
+                </div>
+                <input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitTitle();
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setTitleDraft(photo.title ?? '');
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  placeholder="给这段回忆起个名字…"
+                  style={{
+                    width: 'min(420px, 60vw)',
+                    fontSize: 20,
+                    fontWeight: 800,
+                    color: '#f7f2e8',
+                    lineHeight: 1.2,
+                    padding: '6px 10px',
+                    borderRadius: 12,
+                    border: `1px solid ${theme.gold}35`,
+                    background: 'rgba(0,0,0,0.28)',
+                    outline: 'none'
+                  }}
+                />
+	            </div>
+	            <div style={{ display: 'flex', gap: 8 }}>
+	              <button
+	                onClick={onClose}
+	                aria-label="返回树"
+	                title="返回树"
+	                style={{
+	                  background: 'rgba(0,0,0,0.4)',
+	                  border: '1px solid rgba(255,255,255,0.2)',
+	                  color: '#fff',
                   borderRadius: 12,
                   width: 40,
                   height: 40,
