@@ -28,3 +28,11 @@ public/mediapipe/
 /.amazonq
 /openspec
 AGENTS.md
+
+# Cloudflare Wrangler local state/config
+.wrangler/
+.wrangler-home/
+.wrangler-env.d.ts
+wrangler.toml
+wrangler.local.toml
+.dev.vars

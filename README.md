@@ -62,6 +62,11 @@ npm run dev
   tree: { height: 22, radius: 9 }, // 修改树的大小
   // ...
 };
+
+## 🌐 云端共享（朋友/不同设备同步）
+如果你希望朋友或不同设备也能看到同一份“照片 + 回忆（备注/评论）+ 主题”，需要部署到 Cloudflare Pages，并配置 D1/R2。
+
+部署步骤见：`docs/cloudflare-pages-deploy.md`
 ### 📄 License
 MIT License. Feel free to use and modify for your own holiday celebrations!
 ### Merry Christmas! 🎄✨

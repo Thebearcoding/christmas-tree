@@ -1,0 +1,19 @@
+# Cloudflare Pages Functions + D1 + R2 (example)
+# - Copy to `wrangler.toml` and fill in your own ids/names.
+# - For Pages, the frontend build output is `dist/` from Vite.
+
+name = "christmas-tree"
+compatibility_date = "2025-12-19"
+
+# Pages output (for `wrangler pages dev`)
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "grand-tree"
+database_id = "REPLACE_ME"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "grand-tree-photos"
+

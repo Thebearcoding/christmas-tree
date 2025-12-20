@@ -8,10 +8,11 @@ import { GestureController } from './components/GestureController';
 import { UIOverlay } from './components/UIOverlay';
 import { MemoryOverlay } from './components/MemoryOverlay';
 import { FlyingPolaroid } from './components/FlyingPolaroid';
-import type { CommentEntry, HandPosition, PhotoEntry, Theme, ThemeCustomizationStorage, ThemeKey, ThemeOverrides } from './types';
+import type { CommentEntry, HandPosition, PhotoEntry, ShareDocument, Theme, ThemeCustomizationStorage, ThemeKey, ThemeOverrides } from './types';
 import { TreeMode } from './types';
 import { DEFAULT_THEME_KEY, THEMES } from './theme';
 import { MUSIC_TRACKS } from './music';
+import { buildShareUrl, clearShareFromUrl, createShare, dataUrlToBlob, fetchShare, getShareIdFromLocation, patchShare, uploadSharePhoto } from './shareApi';
 import './App.css';
 
 const MUSIC_STORAGE_KEY = 'grand-tree-music-enabled';
@@ -55,6 +56,8 @@ const DEFAULT_PHOTO_ENTRIES: PhotoEntry[] = DEFAULT_PHOTO_PATHS.map((src, index)
 }));
 const STORAGE_KEY = 'grand-tree-photos';
 const THEME_CUSTOMIZATION_STORAGE_KEY = 'grand-tree-theme-customization-v1';
+
+const emptyThemeCustomizationStorage = (): ThemeCustomizationStorage => ({ version: 1, enabledByThemeKey: {}, overridesByThemeKey: {} });
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 const formatTimestamp = (date: Date) => {
@@ -166,17 +169,21 @@ const mergeThemeWithOverrides = (base: Theme, overrides: ThemeOverrides | undefi
 };
 
 export default function App() {
+  const [shareId, setShareId] = useState<string | null>(() => getShareIdFromLocation());
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareLoaded, setShareLoaded] = useState(false);
+
   const [mode, setMode] = useState<TreeMode>(TreeMode.CHAOS);
   const [themeKey, setThemeKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [themeCustomization, setThemeCustomization] = useState<ThemeCustomizationStorage>(() => {
-    const empty: ThemeCustomizationStorage = { version: 1, enabledByThemeKey: {}, overridesByThemeKey: {} };
+    const empty: ThemeCustomizationStorage = emptyThemeCustomizationStorage();
     try {
       const raw = localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY);
       if (!raw) return empty;
       const parsed = JSON.parse(raw) as Partial<ThemeCustomizationStorage> | null;
       if (!parsed || parsed.version !== 1) return empty;
       return {
-        version: 1,
+        version: 1 as const,
         enabledByThemeKey: parsed.enabledByThemeKey ?? {},
         overridesByThemeKey: parsed.overridesByThemeKey ?? {}
       };
@@ -219,6 +226,17 @@ export default function App() {
   const overlayCaptureRef = useRef<HTMLDivElement>(null);
   const exportMessageTimeoutRef = useRef<number | null>(null);
   const musicAvailable = MUSIC_TRACKS.length > 0;
+  const themeSyncTimeoutRef = useRef<number | null>(null);
+  const lastThemeSyncRef = useRef<string>('');
+  const noteSyncTimeoutsRef = useRef<Record<string, number>>({});
+
+  const shareMode = !!shareId;
+
+  useEffect(() => {
+    const handler = () => setShareId(getShareIdFromLocation());
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
 
   useEffect(() => {
     if (musicRef.current) musicRef.current.volume = DEFAULT_MUSIC_VOLUME;
@@ -274,23 +292,90 @@ export default function App() {
     };
   }, [musicAvailable, musicEnabled, musicIndex]);
 
-  useEffect(() => {
+  const applyShareDoc = (doc: ShareDocument, opts?: { resetUi?: boolean }) => {
+    setThemeKey(doc.themeKey ?? DEFAULT_THEME_KEY);
+    setThemeCustomization(doc.themeCustomization ?? emptyThemeCustomizationStorage());
+    setPhotoEntries(doc.photos?.length ? doc.photos : DEFAULT_PHOTO_ENTRIES);
+    setNotesByPhoto(doc.notesByPhoto ?? {});
+    setCommentsByPhoto(doc.commentsByPhoto ?? {});
+    if (opts?.resetUi) {
+      setSelectedPhotoId(null);
+      setDetailState('idle');
+      setCommentDraft('');
+    }
+    setShareLoaded(true);
+    lastThemeSyncRef.current = JSON.stringify({ themeKey: doc.themeKey, themeCustomization: doc.themeCustomization });
+  };
+
+  const loadLocalPhotos = () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed: PhotoEntry[] = JSON.parse(saved);
-        if (parsed.length) {
-          setPhotoEntries(parsed);
-          setSelectedPhotoId(null);
-          setDetailState('idle');
-        }
+      if (!saved) return;
+      const parsed: PhotoEntry[] = JSON.parse(saved);
+      if (parsed.length) {
+        setPhotoEntries(parsed);
+        setSelectedPhotoId(null);
+        setDetailState('idle');
       }
     } catch (err) {
       console.warn('failed to load saved photos', err);
     }
-  }, []);
+  };
+
+  const loadLocalThemeCustomization = () => {
+    const empty: ThemeCustomizationStorage = emptyThemeCustomizationStorage();
+    try {
+      const raw = localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY);
+      if (!raw) return empty;
+      const parsed = JSON.parse(raw) as Partial<ThemeCustomizationStorage> | null;
+      if (!parsed || parsed.version !== 1) return empty;
+      return {
+        version: 1 as const,
+        enabledByThemeKey: parsed.enabledByThemeKey ?? {},
+        overridesByThemeKey: parsed.overridesByThemeKey ?? {}
+      };
+    } catch {
+      return empty;
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!shareId) {
+        setShareLoaded(false);
+        setNotesByPhoto({});
+        setCommentsByPhoto({});
+        setThemeCustomization(loadLocalThemeCustomization());
+        loadLocalPhotos();
+        return;
+      }
+
+      setShareBusy(true);
+      setShareLoaded(false);
+      try {
+        const { doc } = await fetchShare(shareId);
+        if (cancelled) return;
+        applyShareDoc(doc, { resetUi: true });
+      } catch (err) {
+        console.warn('failed to load share', err);
+        if (!cancelled) {
+          showExportMessage('加载分享失败：请检查网络或链接是否有效', 3500);
+        }
+      } finally {
+        if (!cancelled) setShareBusy(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [shareId]);
 
   const persistPhotos = (entries: PhotoEntry[]) => {
+    if (shareMode) return true;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
       return true;
@@ -303,6 +388,8 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (exportMessageTimeoutRef.current) window.clearTimeout(exportMessageTimeoutRef.current);
+      Object.values(noteSyncTimeoutsRef.current).forEach((id) => window.clearTimeout(id));
+      if (themeSyncTimeoutRef.current) window.clearTimeout(themeSyncTimeoutRef.current);
     };
   }, []);
 
@@ -327,10 +414,28 @@ export default function App() {
     const baseEntries = photoEntries.every((p) => p.src.startsWith('/photos/')) ? [] : photoEntries;
     const nextEntries = [...newEntries, ...baseEntries];
     setPhotoEntries(nextEntries);
-    const savedOk = persistPhotos(nextEntries);
-    if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
-    if (nextEntries.some((p) => p.src.startsWith('blob:') || p.fullSrc.startsWith('blob:'))) {
-      showExportMessage('提示：部分照片无法持久化（刷新后会丢失）', 3500);
+    if (!shareMode) {
+      const savedOk = persistPhotos(nextEntries);
+      if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
+      if (nextEntries.some((p) => p.src.startsWith('blob:') || p.fullSrc.startsWith('blob:'))) {
+        showExportMessage('提示：部分照片无法持久化（刷新后会丢失）', 3500);
+      }
+    } else if (shareId) {
+      setShareBusy(true);
+      try {
+        for (const entry of newEntries) {
+          const thumb = await dataUrlToBlob(entry.src);
+          const full = await dataUrlToBlob(entry.fullSrc);
+          const { doc } = await uploadSharePhoto(shareId, { photoId: entry.id, title: entry.title, thumb, full });
+          applyShareDoc(doc);
+        }
+        showExportMessage('已同步到共享链接', 2500);
+      } catch (err) {
+        console.warn('share upload failed', err);
+        showExportMessage('同步失败：请检查网络后重试', 3500);
+      } finally {
+        setShareBusy(false);
+      }
     }
 
     const firstNew = newEntries[0];
@@ -341,13 +446,31 @@ export default function App() {
   };
 
   const resetPhotos = () => {
-    setPhotoEntries(DEFAULT_PHOTO_ENTRIES);
-    const savedOk = persistPhotos(DEFAULT_PHOTO_ENTRIES);
-    if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
-    setSelectedPhotoId(null);
-    setDetailState('idle');
-    setCommentDraft('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!shareMode) {
+      setPhotoEntries(DEFAULT_PHOTO_ENTRIES);
+      const savedOk = persistPhotos(DEFAULT_PHOTO_ENTRIES);
+      if (!savedOk) showExportMessage('保存失败：空间不足（刷新后可能会丢失）', 3500);
+      setSelectedPhotoId(null);
+      setDetailState('idle');
+      setCommentDraft('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (!shareId) return;
+    const confirmed = window.confirm('确定清空共享内容吗？拿到链接的人都会看到被清空后的结果。');
+    if (!confirmed) return;
+    setShareBusy(true);
+    void patchShare(shareId, { action: 'resetShare' })
+      .then(({ doc }) => {
+        applyShareDoc(doc, { resetUi: true });
+        showExportMessage('已清空共享内容', 2500);
+      })
+      .catch((err) => {
+        console.warn('reset share failed', err);
+        showExportMessage('清空失败：请检查网络后重试', 3500);
+      })
+      .finally(() => setShareBusy(false));
   };
 
   const selectedPhoto = selectedPhotoId ? photoEntries.find((p) => p.id === selectedPhotoId) ?? null : null;
@@ -379,17 +502,37 @@ export default function App() {
   const handleNoteChange = (text: string) => {
     if (!selectedPhoto) return;
     setNotesByPhoto((prev) => ({ ...prev, [selectedPhoto.id]: text }));
+    if (!shareId || !shareLoaded) return;
+    const key = selectedPhoto.id;
+    if (noteSyncTimeoutsRef.current[key]) window.clearTimeout(noteSyncTimeoutsRef.current[key]);
+    noteSyncTimeoutsRef.current[key] = window.setTimeout(() => {
+      void patchShare(shareId, { notesByPhoto: { [key]: text } })
+        .then(({ doc }) => applyShareDoc(doc))
+        .catch((err) => {
+          console.warn('save note failed', err);
+          showExportMessage('同步失败：回忆主题可能未保存', 3500);
+        });
+    }, 700);
   };
 
   const handleAddComment = () => {
     if (!selectedPhoto) return;
     const text = commentDraft.trim();
     if (!text) return;
+    const photoId = selectedPhoto.id;
+    const comment = { id: uuidv4(), text, createdAt: Date.now() };
     setCommentsByPhoto((prev) => {
-      const existing = prev[selectedPhoto.id] ?? [];
-      return { ...prev, [selectedPhoto.id]: [...existing, { id: uuidv4(), text, createdAt: Date.now() }] };
+      const existing = prev[photoId] ?? [];
+      return { ...prev, [photoId]: [...existing, comment] };
     });
     setCommentDraft('');
+    if (!shareId || !shareLoaded) return;
+    void patchShare(shareId, { commentsByPhoto: { [photoId]: [comment] } })
+      .then(({ doc }) => applyShareDoc(doc))
+      .catch((err) => {
+        console.warn('save comment failed', err);
+        showExportMessage('同步失败：评论可能未保存', 3500);
+      });
   };
 
   const closeDetail = () => {
@@ -460,6 +603,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (shareMode) return;
     try {
       localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(themeCustomization));
     } catch (err) {
@@ -467,6 +611,71 @@ export default function App() {
       showExportMessage('主题保存失败：空间不足（刷新后可能会丢失）', 3500);
     }
   }, [themeCustomization]);
+
+  useEffect(() => {
+    if (!shareId || !shareLoaded) return;
+    const nextKey = JSON.stringify({ themeKey, themeCustomization });
+    if (nextKey === lastThemeSyncRef.current) return;
+    if (themeSyncTimeoutRef.current) window.clearTimeout(themeSyncTimeoutRef.current);
+    themeSyncTimeoutRef.current = window.setTimeout(() => {
+      void patchShare(shareId, { themeKey, themeCustomization })
+        .then(({ doc }) => applyShareDoc(doc))
+        .catch((err) => {
+          console.warn('save theme failed', err);
+          showExportMessage('同步失败：主题可能未保存', 3500);
+        });
+    }, 500);
+  }, [shareId, shareLoaded, themeCustomization, themeKey]);
+
+  const handleCreateShare = async () => {
+    if (shareBusy) return;
+    const confirmed = window.confirm('生成分享链接会把照片/回忆上传到云端，且拿到链接的人都能修改。确定继续？');
+    if (!confirmed) return;
+
+    setShareBusy(true);
+    try {
+      const { shareId: newShareId } = await createShare();
+      await patchShare(newShareId, { themeKey, themeCustomization, notesByPhoto, commentsByPhoto });
+
+      const uploads = photoEntries.filter((p) => !p.src.startsWith('/photos/'));
+      for (const entry of uploads) {
+        const thumb = await dataUrlToBlob(entry.src);
+        const full = await dataUrlToBlob(entry.fullSrc);
+        await uploadSharePhoto(newShareId, { photoId: entry.id, title: entry.title, thumb, full });
+      }
+
+      const url = buildShareUrl(newShareId);
+      window.history.pushState(null, '', url);
+      setShareId(newShareId);
+      showExportMessage('分享链接已生成', 2500);
+    } catch (err) {
+      console.warn('create share flow failed', err);
+      showExportMessage('生成失败：请检查网络后重试', 3500);
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareId) return;
+    const url = buildShareUrl(shareId);
+    try {
+      await navigator.clipboard.writeText(url);
+      showExportMessage('已复制分享链接', 2000);
+    } catch (err) {
+      console.warn('clipboard failed', err);
+      window.prompt('复制分享链接：', url);
+    }
+  };
+
+  const handleExitShare = () => {
+    if (!shareId) return;
+    const confirmed = window.confirm('确定退出共享吗？退出后会回到本机数据。');
+    if (!confirmed) return;
+    window.history.pushState(null, '', clearShareFromUrl());
+    setShareId(null);
+    showExportMessage('已退出共享', 1800);
+  };
 
   const handleToggleCustomTheme = () => {
     setThemeCustomization((prev) => {
@@ -736,6 +945,12 @@ export default function App() {
           musicAvailable={musicAvailable}
           musicBlocked={musicBlocked}
           onToggleMusic={handleToggleMusic}
+          shareId={shareId}
+          shareBusy={shareBusy}
+          onCreateShare={handleCreateShare}
+          onCopyShareLink={handleCopyShareLink}
+          onExitShare={handleExitShare}
+          onResetShare={resetPhotos}
         />
 
         <MemoryOverlay

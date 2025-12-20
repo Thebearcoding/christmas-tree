@@ -61,3 +61,19 @@ export interface CommentEntry {
 }
 
 export type HandPosition = { x: number; y: number; detected: boolean };
+
+export type ShareDocument = {
+  version: 1;
+  shareId: string;
+  createdAt: number;
+  updatedAt: number;
+  themeKey: ThemeKey;
+  themeCustomization: ThemeCustomizationStorage;
+  photos: PhotoEntry[];
+  notesByPhoto: Record<string, string>;
+  commentsByPhoto: Record<string, CommentEntry[]>;
+};
+
+export type SharePatch = Partial<
+  Pick<ShareDocument, 'themeKey' | 'themeCustomization' | 'photos' | 'notesByPhoto' | 'commentsByPhoto'>
+> & { action?: 'resetShare' };

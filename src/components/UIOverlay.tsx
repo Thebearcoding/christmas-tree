@@ -34,6 +34,12 @@ type Props = {
   musicAvailable: boolean;
   musicBlocked: boolean;
   onToggleMusic: () => void;
+  shareId: string | null;
+  shareBusy: boolean;
+  onCreateShare: () => void;
+  onCopyShareLink: () => void;
+  onExitShare: () => void;
+  onResetShare: () => void;
 };
 
 export const UIOverlay: React.FC<Props> = ({
@@ -64,7 +70,13 @@ export const UIOverlay: React.FC<Props> = ({
   musicEnabled,
   musicAvailable,
   musicBlocked,
-  onToggleMusic
+  onToggleMusic,
+  shareId,
+  shareBusy,
+  onCreateShare,
+  onCopyShareLink,
+  onExitShare,
+  onResetShare
 }) => {
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [paletteSliderOpen, setPaletteSliderOpen] = useState<string | null>(null);
@@ -358,6 +370,7 @@ export const UIOverlay: React.FC<Props> = ({
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={onOpenUpload}
+              disabled={shareBusy}
               style={{
                 padding: '10px 14px',
                 background: `linear-gradient(135deg, ${accent}, #fff7d1)`,
@@ -365,26 +378,31 @@ export const UIOverlay: React.FC<Props> = ({
                 border: 'none',
                 borderRadius: 10,
                 fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 10px 30px rgba(212,175,55,0.35)'
+                cursor: shareBusy ? 'not-allowed' : 'pointer',
+                boxShadow: '0 10px 30px rgba(212,175,55,0.35)',
+                opacity: shareBusy ? 0.65 : 1
               }}
             >
               上传照片
             </button>
-            <button
-              onClick={onReset}
-              style={{
-                padding: '10px 12px',
-                borderRadius: 10,
-                border: '1px solid rgba(255,255,255,0.25)',
-                background: 'rgba(0,0,0,0.35)',
-                color: accent,
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              使用示例
-            </button>
+            {!shareId && (
+              <button
+                onClick={onReset}
+                disabled={shareBusy}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  background: 'rgba(0,0,0,0.35)',
+                  color: accent,
+                  fontWeight: 700,
+                  cursor: shareBusy ? 'not-allowed' : 'pointer',
+                  opacity: shareBusy ? 0.65 : 1
+                }}
+              >
+                使用示例
+              </button>
+            )}
             <button
               onClick={onExportPostcardPng}
               disabled={!exportEnabled || exportBusy}
@@ -451,6 +469,84 @@ export const UIOverlay: React.FC<Props> = ({
             >
               {musicAvailable ? (musicBlocked ? '点一下开音乐' : musicEnabled ? '关闭音乐' : '开启音乐') : '无音乐'}
             </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {!shareId ? (
+              <>
+                <button
+                  onClick={onCreateShare}
+                  disabled={shareBusy}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: `1px solid ${accent}`,
+                    background: 'rgba(0,0,0,0.35)',
+                    color: accent,
+                    fontWeight: 800,
+                    cursor: shareBusy ? 'not-allowed' : 'pointer',
+                    letterSpacing: '1px',
+                    opacity: shareBusy ? 0.65 : 1
+                  }}
+                >
+                  生成分享链接
+                </button>
+                <div style={{ fontSize: 12, color: '#9a9a9a' }}>提示：生成后照片会上传到云端。</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#b6b1a3' }}>共享中：{shareId.slice(0, 8)}…</div>
+                <button
+                  onClick={onCopyShareLink}
+                  disabled={shareBusy}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: `1px solid ${accent}`,
+                    background: 'rgba(0,0,0,0.35)',
+                    color: accent,
+                    fontWeight: 800,
+                    cursor: shareBusy ? 'not-allowed' : 'pointer',
+                    opacity: shareBusy ? 0.65 : 1
+                  }}
+                >
+                  复制链接
+                </button>
+                <button
+                  onClick={onExitShare}
+                  disabled={shareBusy}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    background: 'rgba(0,0,0,0.35)',
+                    color: '#f5f5f5',
+                    fontWeight: 700,
+                    cursor: shareBusy ? 'not-allowed' : 'pointer',
+                    opacity: shareBusy ? 0.65 : 1
+                  }}
+                >
+                  退出共享
+                </button>
+                <button
+                  onClick={onResetShare}
+                  disabled={shareBusy}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    background: 'rgba(200,60,60,0.18)',
+                    color: '#ffd7d7',
+                    fontWeight: 800,
+                    cursor: shareBusy ? 'not-allowed' : 'pointer',
+                    opacity: shareBusy ? 0.65 : 1
+                  }}
+                >
+                  清空共享内容
+                </button>
+                <div style={{ width: '100%', fontSize: 12, color: '#9a9a9a' }}>提示：拿到链接的人都可以查看和修改。</div>
+              </>
+            )}
           </div>
           {exportMessage && (
             <div style={{ fontSize: 12, color: '#e7e0d0', opacity: 0.9 }}>
@@ -668,7 +764,9 @@ export const UIOverlay: React.FC<Props> = ({
                   ))}
 
                   <div style={{ fontSize: 12, color: '#9a9a9a' }}>
-                    提示：主题自定义仅保存在本机浏览器（清理缓存/换设备会丢失）。
+                    {shareId
+                      ? '提示：当前为共享模式，主题修改会同步到分享链接（刷新可看到最新）。'
+                      : '提示：主题自定义仅保存在本机浏览器（清理缓存/换设备会丢失）。'}
                   </div>
                 </div>
 

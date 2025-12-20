@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { CommentEntry, PhotoEntry, Theme } from '../types';
 
 type Props = {
@@ -32,7 +32,8 @@ export const MemoryOverlay: React.FC<Props> = ({
   cardAnchor,
   onAnchorChange
 }) => {
-  if (!photo || state === 'idle') return null;
+  const shouldRender = !!photo && state !== 'idle';
+  const [narrowLayout, setNarrowLayout] = useState(() => window.innerWidth < 860);
 
   const centerOrigin = origin ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   const anchor = cardAnchor ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -42,7 +43,7 @@ export const MemoryOverlay: React.FC<Props> = ({
   const imageRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
-    if (!imageRef.current || !onAnchorChange || state === 'exit') return;
+    if (!shouldRender || !imageRef.current || !onAnchorChange || state === 'exit') return;
     const measure = () => {
       const rect = imageRef.current?.getBoundingClientRect();
       if (rect) {
@@ -62,7 +63,18 @@ export const MemoryOverlay: React.FC<Props> = ({
       window.removeEventListener('resize', measure);
       ro.disconnect();
     };
-  }, [onAnchorChange, state]);
+  }, [onAnchorChange, shouldRender, state]);
+
+  useLayoutEffect(() => {
+    if (!shouldRender || state === 'exit') return;
+    const onResize = () => setNarrowLayout(window.innerWidth < 860);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [shouldRender, state]);
+
+  if (!shouldRender || !photo) return null;
+
   const isActive = state === 'active';
   const isExiting = state === 'exit';
 
@@ -95,14 +107,14 @@ export const MemoryOverlay: React.FC<Props> = ({
             ? 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease'
             : 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease',
           transformOrigin: 'center center',
-          width: '82vw',
+          width: narrowLayout ? '92vw' : '82vw',
           maxWidth: '1100px',
-          maxHeight: '80vh',
+          maxHeight: narrowLayout ? '86vh' : '80vh',
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 0.9fr)',
-          gap: '18px',
-          padding: '18px',
-          background: 'rgba(10,10,10,0.55)',
+          gridTemplateColumns: narrowLayout ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(320px, 0.9fr)',
+          gap: narrowLayout ? '14px' : '18px',
+          padding: narrowLayout ? '14px' : '18px',
+          background: 'linear-gradient(180deg, rgba(18,18,18,0.66), rgba(8,8,8,0.52))',
           border: `1px solid ${theme.gold}40`,
           borderRadius: '18px',
           boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
@@ -123,40 +135,69 @@ export const MemoryOverlay: React.FC<Props> = ({
           <div
             style={{
               position: 'relative',
-              width: '88%',
-              maxWidth: '520px',
+              width: '92%',
+              maxWidth: '560px',
               aspectRatio: '0.72',
               background: theme.paper,
-              borderRadius: 12,
-              boxShadow: '0 18px 40px rgba(0,0,0,0.5)',
-              padding: '12px 12px 26px 12px',
+              borderRadius: 16,
+              boxShadow: '0 26px 70px rgba(0,0,0,0.6)',
+              padding: '14px 14px 44px 14px',
               display: 'flex',
               flexDirection: 'column',
               gap: 8,
               overflow: 'hidden',
-              border: '1px solid rgba(0,0,0,0.08)'
+              border: '1px solid rgba(0,0,0,0.14)',
+              transform: 'rotate(-1.2deg)'
             }}
           >
+            {/* paper texture + subtle edge shading */}
             <div
               style={{
                 position: 'absolute',
-                top: 10,
-                width: '38%',
-                height: 6,
-                left: '31%',
-                background: theme.gold,
-                borderRadius: 4,
-                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))'
+                inset: 0,
+                borderRadius: 16,
+                pointerEvents: 'none',
+                backgroundImage:
+                  'radial-gradient(circle at 18% 12%, rgba(0,0,0,0.08), transparent 42%), radial-gradient(circle at 84% 76%, rgba(0,0,0,0.06), transparent 45%), repeating-linear-gradient(0deg, rgba(0,0,0,0.02) 0px, rgba(0,0,0,0.02) 1px, transparent 1px, transparent 4px), linear-gradient(180deg, rgba(255,255,255,0.42), rgba(0,0,0,0.02))',
+                opacity: 0.35
               }}
             />
-            <div style={{ flex: 1, borderRadius: 10, overflow: 'hidden', background: '#0f172a', display: 'flex' }}>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: 16,
+                pointerEvents: 'none',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -10px 24px rgba(0,0,0,0.08)'
+              }}
+            />
+            <div
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                overflow: 'hidden',
+                background: '#0b0f17',
+                display: 'flex',
+                border: '1px solid rgba(0,0,0,0.18)',
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)'
+              }}
+            >
               <img
                 src={photo.fullSrc || photo.src}
                 alt={photo.title}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>
-            <div style={{ textAlign: 'center', fontSize: 15, color: '#111827', letterSpacing: '0.12em', fontWeight: 800 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                fontSize: 15,
+                color: theme.ink,
+                letterSpacing: '0.12em',
+                fontWeight: 900,
+                textShadow: '0 1px 0 rgba(255,255,255,0.55)'
+              }}
+            >
               {photo.title || '回忆'}
             </div>
           </div>
@@ -207,92 +248,163 @@ export const MemoryOverlay: React.FC<Props> = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 12, letterSpacing: '1px', color: '#d9d9d9' }}>心情 / 记录</label>
-            <textarea
-              value={note}
-              onChange={(e) => onNoteChange(e.target.value)}
-              placeholder="写下这一刻的心情、地点或人..."
+          {/* Note */}
+          <div
+            style={{
+              borderRadius: 16,
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(255,255,255,0.04)',
+              boxShadow: '0 18px 40px rgba(0,0,0,0.25)',
+              overflow: 'hidden'
+            }}
+          >
+            <div
               style={{
-                width: '100%',
-                minHeight: 90,
-                padding: 10,
-                background: 'rgba(255,255,255,0.05)',
-                border: `1px solid ${theme.gold}30`,
-                color: '#f7f2e8',
-                borderRadius: 10,
-                resize: 'vertical',
-                fontFamily: 'inherit'
+                padding: '10px 12px',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: 'linear-gradient(90deg, rgba(212,175,55,0.16), rgba(0,0,0,0))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
               }}
-            />
+            >
+              <div style={{ fontSize: 12, letterSpacing: '1px', color: '#f0e6d2', fontWeight: 800 }}>回忆主题</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>心情 / 地点 / 人</div>
+            </div>
+            <div style={{ padding: 12 }}>
+              <textarea
+                value={note}
+                onChange={(e) => onNoteChange(e.target.value)}
+                placeholder="写下这一刻的心情、地点或人…"
+                style={{
+                  width: '100%',
+                  minHeight: 110,
+                  padding: 12,
+                  background: 'rgba(0,0,0,0.28)',
+                  border: `1px solid ${theme.gold}35`,
+                  color: '#f7f2e8',
+                  borderRadius: 12,
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05)'
+                }}
+              />
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
-            <div style={{ fontSize: 12, letterSpacing: '1px', color: '#d9d9d9' }}>回忆评论</div>
+          {/* Comments */}
+          <div
+            style={{
+              borderRadius: 16,
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(0,0,0,0.28)',
+              boxShadow: '0 18px 40px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0
+            }}
+          >
+            <div
+              style={{
+                padding: '10px 12px',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: 'linear-gradient(90deg, rgba(212,175,55,0.12), rgba(0,0,0,0))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
+              }}
+            >
+              <div style={{ fontSize: 12, letterSpacing: '1px', color: '#f0e6d2', fontWeight: 800 }}>回忆评论</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>{comments.length} 条</div>
+            </div>
+
             <div
               style={{
                 flex: 1,
-                minHeight: 120,
-                maxHeight: 200,
+                minHeight: 140,
                 overflowY: 'auto',
-                paddingRight: 6,
+                padding: 12,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 6
+                gap: 10
               }}
             >
-              {comments.length === 0 && <div style={{ fontSize: 12, color: '#9a9a9a' }}>还没有评论，留下你的祝福吧。</div>}
+              {comments.length === 0 && (
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    border: '1px dashed rgba(255,255,255,0.14)',
+                    color: 'rgba(255,255,255,0.7)',
+                    fontSize: 12,
+                    background: 'rgba(255,255,255,0.03)'
+                  }}
+                >
+                  还没有评论，留下你的祝福吧。
+                </div>
+              )}
               {comments.map((comment) => (
                 <div
                   key={comment.id}
                   style={{
-                    padding: '8px 10px',
+                    padding: '10px 12px',
                     background: 'rgba(255,255,255,0.04)',
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.06)'
+                    borderRadius: 14,
+                    border: '1px solid rgba(255,255,255,0.08)'
                   }}
                 >
-                  <div style={{ fontSize: 12, color: '#d0d0d0' }}>{comment.text}</div>
-                  <div style={{ fontSize: 10, color: '#8f8f8f', marginTop: 4 }}>{new Date(comment.createdAt).toLocaleString()}</div>
+                  <div style={{ fontSize: 12, color: '#f1eee6', lineHeight: 1.5 }}>{comment.text}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}>
+                    {new Date(comment.createdAt).toLocaleString()}
+                  </div>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                value={commentDraft}
-                onChange={(e) => onCommentChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onSubmitComment();
-                  }
-                }}
-                placeholder="输入祝福或想说的话..."
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  background: 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${theme.gold}30`,
-                  color: '#f7f2e8',
-                  borderRadius: 10,
-                  fontFamily: 'inherit'
-                }}
-              />
-              <button
-                onClick={onSubmitComment}
-                style={{
-                  padding: '10px 12px',
-                  background: `linear-gradient(135deg, ${theme.gold}, #fff7d1)`,
-                  border: 'none',
-                  color: '#000',
-                  fontFamily: 'inherit',
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  cursor: 'pointer'
-                }}
-              >
-                送出
-              </button>
+
+            <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.22)' }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input
+                  value={commentDraft}
+                  onChange={(e) => onCommentChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      onSubmitComment();
+                    }
+                  }}
+                  placeholder="输入祝福或想说的话…"
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${theme.gold}35`,
+                    color: '#f7f2e8',
+                    borderRadius: 12,
+                    fontFamily: 'inherit',
+                    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05)'
+                  }}
+                />
+                <button
+                  onClick={onSubmitComment}
+                  style={{
+                    padding: '12px 14px',
+                    background: `linear-gradient(135deg, ${theme.gold}, #fff7d1)`,
+                    border: 'none',
+                    color: '#000',
+                    fontFamily: 'inherit',
+                    fontWeight: 900,
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    boxShadow: '0 14px 34px rgba(212,175,55,0.25)'
+                  }}
+                >
+                  送出
+                </button>
+              </div>
             </div>
           </div>
         </div>

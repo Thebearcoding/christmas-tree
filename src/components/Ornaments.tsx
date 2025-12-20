@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Theme } from '../types';
 import { TreeMode } from '../types';
@@ -28,6 +28,8 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1, 
   const ballsRef = useRef<THREE.InstancedMesh>(null);
   const giftsRef = useRef<THREE.InstancedMesh>(null);
   const lightsRef = useRef<THREE.InstancedMesh>(null);
+  const renderer = useThree((state) => state.gl);
+  const environment = useThree((state) => state.scene.environment);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const height = 14; // match foliage height
   const baseRadius = 5.8;
@@ -35,6 +37,13 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1, 
   const lowQuality = quality === 'low';
   const ballSegments = lowQuality ? 16 : 32;
   const lightSegments = lowQuality ? 8 : 12;
+  const supportsPmrem = useMemo(() => {
+    const ctx = renderer.getContext();
+    const isWebGL2 = renderer.capabilities.isWebGL2;
+    if (isWebGL2) return !!ctx.getExtension('EXT_color_buffer_float');
+    return !!(ctx.getExtension('EXT_color_buffer_half_float') || ctx.getExtension('EXT_color_buffer_float'));
+  }, [renderer]);
+  const usePbrBalls = !!environment && supportsPmrem;
 
   const { balls, gifts, lights } = useMemo(() => {
     const ballList: InstanceData[] = [];
@@ -264,7 +273,11 @@ export const Ornaments: React.FC<Props> = ({ mode, count, theme, timeScale = 1, 
       {balls.length > 0 && (
         <instancedMesh ref={ballsRef} args={[undefined, undefined, balls.length]}>
           <sphereGeometry args={[1, ballSegments, ballSegments]} />
-          <meshStandardMaterial roughness={0.1} metalness={0.9} envMapIntensity={1.5} />
+          {usePbrBalls ? (
+            <meshStandardMaterial roughness={0.1} metalness={0.9} envMapIntensity={1.5} />
+          ) : (
+            <meshPhongMaterial shininess={110} specular="#ffffff" />
+          )}
         </instancedMesh>
       )}
 
