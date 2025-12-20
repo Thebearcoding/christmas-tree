@@ -13,6 +13,7 @@ import { TreeMode } from './types';
 import { DEFAULT_THEME_KEY, THEMES } from './theme';
 import { MUSIC_TRACKS } from './music';
 import { buildShareUrl, clearShareFromUrl, createShare, dataUrlToBlob, fetchShare, getShareIdFromLocation, patchShare, uploadSharePhoto } from './shareApi';
+import { DEFAULT_PHOTO_FILES } from './defaultPhotos.generated';
 import './App.css';
 
 const MUSIC_STORAGE_KEY = 'grand-tree-music-enabled';
@@ -28,25 +29,7 @@ const isProbablyMobileDevice = () => {
   return isIPad || isMobile;
 };
 
-const DEFAULT_PHOTO_FILES = [
-  '1.JPG',
-  '042161097c88df0fe1cf99b4423f19b8.JPG',
-  '137f8a10a9b84ed51e7e9e8dedf530d8.JPG',
-  '23a9686d45855ccecd51e9e7181f880e.JPG',
-  '28b3b30f5a2215f671999e4577f89e6f.JPG',
-  '341a66a359ed85a3b080a45cf442cdbc.JPG',
-  '47d16e7c26a35abf7116fd57e23e161b.JPG',
-  '490a28aa3b273431b7593476500cb6c5.JPG',
-  '60cef57d196c7fe24f10f2adefe5c8b5.JPG',
-  '7c938e59f5a9ff3bd74e24f54ed127b8.JPG',
-  'a0818fb6fab2899fe3a4d8b5a2428395.JPG',
-  'c522840f4cfb328031dd00d434f9dc0f.JPG',
-  'e916b855455a77839eda20c4383afc9d.JPG',
-  'eaabfa455eec925a0ea544c445e29a9b.JPG',
-  'fd1f8abe251a8cdd1fb5e2a2dbbba43a.JPG'
-];
-
-const DEFAULT_PHOTO_PATHS = DEFAULT_PHOTO_FILES.map((name) => `/photos/${name}`);
+const DEFAULT_PHOTO_PATHS = DEFAULT_PHOTO_FILES.map((name) => `/photos/${encodeURIComponent(name)}`);
 
 const DEFAULT_PHOTO_ENTRIES: PhotoEntry[] = DEFAULT_PHOTO_PATHS.map((src, index) => ({
   id: index === 0 ? 'default-top' : `default-${index}`,

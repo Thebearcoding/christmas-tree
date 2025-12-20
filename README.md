@@ -40,10 +40,11 @@ npm run dev
 * 建议：使用正方形或 4:3 比例，单张 500kb 以内体验更流畅。
 
 #### 方式 2：替换内置照片文件（备用）
-* 仍可将图片放在 `public/photos/` 下：
-  * 顶端大图/封面图：`top.jpg`
-  * 树身照片：`1.jpg`, `2.jpg`, `3.jpg` ...
-* 如果你增加了默认照片数量，可在 `src/App.tsx` 中调整 `TOTAL_NUMBERED_PHOTOS`，让应用预加载更多文件。
+* 将图片放在 `public/photos/` 下即可（支持 `jpg/jpeg/png/webp`）。
+* 应用会自动把 `public/photos/` 里的**所有图片**作为“示例”加载（文件名排序；如存在 `top.*` 或 `1.*` 会优先作为第一张）。
+* 修改完示例图片后：
+  * 本地：重启 `npm run dev` 或重新 `npm run build`
+  * 线上：记得 `git commit + push` 触发 Cloudflare Pages 重新部署
 ### 🖐️ 手势控制说明
 * **本项目内置了 AI 手势识别系统，请站在摄像头前进行操作（屏幕右下角有 DEBUG 按钮可查看摄像头画面）**：
 🖐 张开手掌 (Open Palm)	Disperse (散开)	圣诞树炸裂成漫天飞舞的粒子和照片
