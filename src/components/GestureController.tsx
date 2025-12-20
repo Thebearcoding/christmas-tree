@@ -33,10 +33,12 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState('手势初始化中…');
   const [ready, setReady] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const lastMode = useRef<TreeMode>(currentMode);
   const onModeChangeRef = useRef(onModeChange);
   const onHandPositionRef = useRef(onHandPosition);
   const onPinchRef = useRef(onPinch);
+  const statusRef = useRef(status);
 
   const openFrames = useRef(0);
   const closedFrames = useRef(0);
@@ -53,6 +55,16 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
   useEffect(() => {
     lastMode.current = currentMode;
   }, [currentMode]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const setStatusStable = (next: string) => {
+    if (statusRef.current === next) return;
+    statusRef.current = next;
+    setStatus(next);
+  };
 
   useEffect(() => {
     onModeChangeRef.current = onModeChange;
@@ -89,7 +101,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
     };
 
     if (!enabled) {
-      setStatus('手势：关闭');
+      setStatusStable('手势：关闭');
       onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
       cleanup();
       return cleanup;
@@ -223,9 +235,9 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
       }
 
       if (now < pinchUiUntil.current && pinchUiText.current) {
-        setStatus(`${baseStatus} · ${pinchUiText.current}`);
+        setStatusStable(`${baseStatus} · ${pinchUiText.current}`);
       } else {
-        setStatus(baseStatus);
+        setStatusStable(baseStatus);
       }
     };
 
@@ -240,7 +252,7 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
           drawSkeleton(landmarks);
           detectGesture(landmarks);
         } else {
-          setStatus('未检测到手');
+          setStatusStable('未检测到手');
           onHandPositionRef.current?.({ x: 0.5, y: 0.5, detected: false });
           openFrames.current = 0;
           closedFrames.current = 0;
@@ -257,11 +269,11 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
 
     const startWebcam = async (): Promise<boolean> => {
       if (!window.isSecureContext) {
-        setStatus('摄像头需要 HTTPS（请用 https:// 打开）');
+        setStatusStable('摄像头需要 HTTPS（请用 https:// 打开）');
         return false;
       }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setStatus('摄像头不可用');
+        setStatusStable('摄像头不可用');
         return false;
       }
 
@@ -279,20 +291,20 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
         return true;
       } catch (err) {
         const domErr = err as { name?: string };
-        if (domErr?.name === 'NotAllowedError') setStatus('摄像头权限被拒绝');
-        else if (domErr?.name === 'NotFoundError') setStatus('未找到摄像头');
-        else setStatus('摄像头错误');
+        if (domErr?.name === 'NotAllowedError') setStatusStable('摄像头权限被拒绝');
+        else if (domErr?.name === 'NotFoundError') setStatusStable('未找到摄像头');
+        else setStatusStable('摄像头错误');
         return false;
       }
     };
 
     const setup = async () => {
       try {
-        setStatus('请求摄像头权限…');
+        setStatusStable('请求摄像头权限…');
         const cameraOk = await startWebcam();
         if (!cameraOk || cancelled) return;
 
-        setStatus('加载手势模型…');
+        setStatusStable('加载手势模型…');
         const base = import.meta.env.BASE_URL || '/';
         const mediapipeBase = joinBase(base, 'mediapipe');
         const modelPath = joinBase(base, 'models/hand_landmarker.task');
@@ -347,14 +359,14 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
         }
         if (cancelled) return;
 
-        setStatus('请把手放到镜头前…');
+        setStatusStable('请把手放到镜头前…');
         rafId = requestAnimationFrame(predictWebcam);
       } catch (err) {
         const message = err instanceof Error ? err.message : '';
         if (/timeout/i.test(message)) {
-          setStatus('手势模型加载超时（请检查 /mediapipe 和 /models 是否可访问）');
+          setStatusStable('手势模型加载超时（请检查 /mediapipe 和 /models 是否可访问）');
         } else {
-          setStatus('手势不可用');
+          setStatusStable('手势不可用');
         }
       }
     };
@@ -389,51 +401,71 @@ export const GestureController: React.FC<Props> = ({ currentMode, onModeChange, 
           letterSpacing: '1px',
           border: '1px solid rgba(212,175,55,0.35)',
           borderRadius: 6,
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10
         }}
       >
-        {status}
+        <span>{status}</span>
+        <button
+          onClick={() => setPreviewOpen((prev) => !prev)}
+          style={{
+            padding: '4px 8px',
+            borderRadius: 8,
+            border: '1px solid rgba(212,175,55,0.35)',
+            background: 'rgba(0,0,0,0.35)',
+            color: '#D4AF37',
+            fontSize: 11,
+            letterSpacing: '1px',
+            cursor: 'pointer'
+          }}
+        >
+          {previewOpen ? '隐藏预览' : '查看预览'}
+        </button>
       </div>
 
-      <div
-        style={{
-          position: 'relative',
-          width: '220px',
-          height: '150px',
-          border: '1px solid rgba(212,175,55,0.4)',
-          borderRadius: 8,
-          overflow: 'hidden',
-          background: '#000',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-          pointerEvents: 'auto'
-        }}
-      >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
+      {previewOpen && (
+        <div
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            transform: 'scaleX(-1)',
-            opacity: ready ? 1 : 0,
-            transition: 'opacity 0.6s ease'
+            position: 'relative',
+            width: '220px',
+            height: '150px',
+            border: '1px solid rgba(212,175,55,0.4)',
+            borderRadius: 8,
+            overflow: 'hidden',
+            background: '#000',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            pointerEvents: 'auto'
           }}
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-            transform: 'scaleX(-1)'
-          }}
-        />
-      </div>
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: 'scaleX(-1)',
+              opacity: ready ? 1 : 0,
+              transition: 'opacity 0.6s ease'
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              transform: 'scaleX(-1)'
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
